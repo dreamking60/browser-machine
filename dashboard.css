@@ -8,6 +8,16 @@
   --danger: #9b2e1e;
 }
 
+body[data-theme="dark"] {
+  --bg: #0f1512;
+  --panel: #141d18;
+  --line: #2c3b33;
+  --text: #e7efe9;
+  --muted: #9db2a5;
+  --primary: #3da36d;
+  --danger: #d36b5a;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -34,6 +44,12 @@ body {
 .sidebar h2 { margin: 16px 0 8px; font-size: 16px; }
 
 .analysis-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.quick-nav {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
@@ -116,16 +132,22 @@ input, select {
   border-radius: 8px;
   padding: 9px;
   font-size: 15px;
+  background: var(--panel);
+  color: var(--text);
 }
 
 .actions, .export-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: end; }
+.checks-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.checks-row label { display: flex; align-items: center; gap: 8px; }
+.checks-row input { width: auto; }
 
 .btn {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 9px 12px;
   font-size: 14px;
-  background: #fff;
+  background: var(--panel);
+  color: var(--text);
   cursor: pointer;
 }
 .btn.primary { background: var(--primary); color: #fff; font-weight: 700; border-color: var(--primary); }
