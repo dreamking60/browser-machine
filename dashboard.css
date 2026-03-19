@@ -64,6 +64,18 @@ body {
   cursor: pointer;
 }
 
+.nav-link-btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  text-align: center;
+}
+
 .nav-btn.active {
   background: #ebf8f1;
   border-color: var(--primary);

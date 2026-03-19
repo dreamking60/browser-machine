@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>无障碍比价数据分析</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <h1>数据分析</h1>
+        <p class="sub">分析与日志页</p>
+
+        <h2>页面跳转</h2>
+        <div class="analysis-nav">
+          <a class="nav-link-btn" href="dashboard.html">采集与结果页</a>
+          <button class="nav-btn active" disabled>数据分析页</button>
+        </div>
+
+        <h2>分析视图</h2>
+        <div class="analysis-nav" id="analysisNav">
+          <button class="nav-btn active" data-view="summary">汇总</button>
+          <button class="nav-btn" data-view="taobao">淘宝</button>
+          <button class="nav-btn" data-view="jd">京东</button>
+          <button class="nav-btn" data-view="compare">对比</button>
+        </div>
+
+        <h2>任务批次</h2>
+        <div id="runList" class="run-list"></div>
+      </aside>
+
+      <main class="main">
+        <section class="panel" id="panelFilter">
+          <div class="title-row">
+            <h2>筛选与看板</h2>
+            <p id="status" class="status">状态：待加载</p>
+          </div>
+          <div class="form-grid">
+            <label>平台筛选
+              <select id="filterPlatform">
+                <option value="all">全部</option>
+                <option value="taobao">淘宝</option>
+                <option value="jd">京东</option>
+              </select>
+            </label>
+            <label>店铺关键词
+              <input id="filterShop" type="text" placeholder="例如：新华书店" />
+            </label>
+            <label>标题关键词
+              <input id="filterTitle" type="text" placeholder="例如：典藏版" />
+            </label>
+            <label>最小销量
+              <input id="filterMinSales" type="number" min="0" placeholder="例如：1000" />
+            </label>
+            <label>最低价格
+              <input id="filterMinPrice" type="number" min="0" step="0.01" placeholder="例如：20" />
+            </label>
+            <label>最高价格
+              <input id="filterMaxPrice" type="number" min="0" step="0.01" placeholder="例如：200" />
+            </label>
+            <label>排序方式
+              <select id="sortMode">
+                <option value="price_asc">价格升序</option>
+                <option value="price_desc">价格降序</option>
+                <option value="sales_desc">销量降序</option>
+                <option value="time_desc">时间倒序</option>
+              </select>
+            </label>
+            <label>历史趋势周期
+              <select id="trendRangeDays">
+                <option value="7">近7天</option>
+                <option value="14" selected>近14天</option>
+                <option value="30">近30天</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions">
+            <button id="applyFilterBtn" class="btn primary">应用筛选</button>
+            <button id="resetFilterBtn" class="btn">重置筛选</button>
+          </div>
+          <div class="export-row">
+            <label>保存视图名称
+              <input id="viewName" type="text" placeholder="例如：低价高销量" />
+            </label>
+            <button id="saveViewBtn" class="btn">保存视图</button>
+            <label>已保存视图
+              <select id="savedViewSelect">
+                <option value="">请选择</option>
+              </select>
+            </label>
+            <button id="applyViewBtn" class="btn">应用视图</button>
+            <button id="deleteViewBtn" class="btn danger">删除视图</button>
+          </div>
+          <div class="checks-row">
+            <label><input id="mergeSimilar" type="checkbox" checked /> 同款归并分析</label>
+          </div>
+        </section>
+
+        <section class="panel" id="panelAnalysis">
+          <div class="title-row">
+            <h2>数据分析</h2>
+            <div id="activeRunText" class="active-run">当前：全部任务</div>
+          </div>
+          <div class="stats" id="analysisStats"></div>
+          <div class="charts" id="analysisCharts"></div>
+        </section>
+
+        <section class="panel" id="panelExport">
+          <h2>导出中心</h2>
+          <div class="export-row">
+            <button id="exportReportBtn" class="btn primary">导出分析报告</button>
+            <button id="refreshBtn" class="btn">刷新数据</button>
+          </div>
+        </section>
+
+        <section class="panel" id="panelLogs">
+          <div class="title-row">
+            <h2>错误日志与统计</h2>
+            <div class="actions">
+              <button id="refreshLogsBtn" class="btn">刷新日志</button>
+              <button id="clearLogsBtn" class="btn danger">清空日志</button>
+            </div>
+          </div>
+          <div class="stats" id="logStats"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>级别</th>
+                  <th>来源</th>
+                  <th>代码</th>
+                  <th>信息</th>
+                </tr>
+              </thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="analysis.js"></script>
+  </body>
+</html>
