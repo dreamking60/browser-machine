@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Assistive Web Bot</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="panel" aria-live="polite">
+      <h1>无障碍浏览机器人</h1>
+      <p id="statusText" class="status">状态：未启动</p>
+
+      <div class="buttons">
+        <button id="openDashboardBtn" class="primary">打开网页控制台</button>
+      </div>
+
+      <label>比价关键词（淘宝+京东）
+        <input id="compareKeyword" type="text" placeholder="例如：电动轮椅" />
+      </label>
+
+      <label>每个平台抓取页数
+        <input id="comparePages" type="number" min="1" value="3" />
+      </label>
+
+      <div class="buttons">
+        <button id="startCompareBtn" class="primary">一键比价启动</button>
+        <button id="stopAllBtn" class="danger">停止全部比价</button>
+      </div>
+
+      <hr />
+
+      <label>执行间隔（毫秒）
+        <input id="intervalMs" type="number" min="800" value="4000" />
+      </label>
+
+      <label>每次滚动像素
+        <input id="scrollStep" type="number" min="100" value="600" />
+      </label>
+
+      <label>最大执行次数
+        <input id="maxIterations" type="number" min="1" value="30" />
+      </label>
+
+      <label>首次点击元素选择器（可选）
+        <input id="targetClickSelector" type="text" placeholder="例如：button.start" />
+      </label>
+
+      <label>翻页元素选择器（可选）
+        <input id="nextPageSelector" type="text" placeholder="例如：a.next" />
+      </label>
+
+      <label>记录链接选择器（可选）
+        <input id="captureLinkSelector" type="text" placeholder="例如：article a.title" />
+      </label>
+
+      <label>数据采集映射（每行：字段名=CSS选择器）
+        <textarea id="fieldsMapping" rows="5" placeholder="标题=h1\n价格=.price\n公司=.company"></textarea>
+      </label>
+
+      <div class="checks">
+        <label><input id="smoothScroll" type="checkbox" checked /> 平滑滚动</label>
+        <label><input id="enableSpeech" type="checkbox" /> 语音提示</label>
+      </div>
+
+      <div class="buttons">
+        <button id="startBtn" class="primary">普通模式启动</button>
+        <button id="stopBtn" class="danger">当前页停止</button>
+      </div>
+
+      <div class="buttons">
+        <button id="exportBtn">导出 JSON</button>
+        <button id="clearDataBtn">清空数据</button>
+      </div>
+
+      <p class="hint">提示：建议使用“网页控制台”进行多平台比价任务。</p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

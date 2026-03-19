@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>无障碍比价控制台</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="hero">
+        <h1>无障碍自动比价控制台</h1>
+        <p>一次输入关键词，自动采集淘宝和京东商品，统一展示与导出。</p>
+      </header>
+
+      <section class="card controls">
+        <h2>任务设置</h2>
+        <div class="grid">
+          <label>
+            关键词
+            <input id="keyword" type="text" placeholder="例如：电动轮椅" />
+          </label>
+          <label>
+            每个平台页数
+            <input id="pages" type="number" min="1" value="3" />
+          </label>
+          <label>
+            执行间隔（毫秒）
+            <input id="intervalMs" type="number" min="1000" value="4000" />
+          </label>
+          <label class="checkbox">
+            <input id="speech" type="checkbox" />
+            语音提示
+          </label>
+        </div>
+        <div class="actions">
+          <button id="startBtn" class="primary">启动多平台采集</button>
+          <button id="stopBtn" class="danger">停止全部任务</button>
+          <button id="refreshBtn">刷新结果</button>
+          <button id="clearBtn">清空数据</button>
+          <button id="exportBtn">导出 JSON</button>
+        </div>
+        <p id="status" class="status">状态：待启动</p>
+      </section>
+
+      <section class="card summary">
+        <h2>结果摘要</h2>
+        <div class="stats">
+          <div><span id="totalCount">0</span><small>总商品数</small></div>
+          <div><span id="taobaoCount">0</span><small>淘宝</small></div>
+          <div><span id="jdCount">0</span><small>京东</small></div>
+          <div><span id="minPrice">-</span><small>最低价</small></div>
+        </div>
+      </section>
+
+      <section class="card table-wrap">
+        <h2>采集结果</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>标题</th>
+              <th>价格</th>
+              <th>店铺</th>
+              <th>链接</th>
+              <th>时间</th>
+            </tr>
+          </thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>

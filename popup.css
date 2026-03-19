@@ -1,0 +1,106 @@
+:root {
+  --bg: #f7f7ee;
+  --panel: #fffef8;
+  --text: #1a1a1a;
+  --muted: #505050;
+  --primary: #12613d;
+  --danger: #9c2f1c;
+  --border: #d8d2c8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(circle at 20% 10%, #fffbe8 0%, var(--bg) 45%, #efe7d8 100%);
+  color: var(--text);
+}
+
+.panel {
+  width: 370px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fffef8 0%, #fff9f0 100%);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.status {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+input,
+textarea,
+button {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  padding: 10px;
+  background: #fff;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.checks input {
+  width: auto;
+  margin: 0;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button.primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}

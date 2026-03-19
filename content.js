@@ -1,0 +1,422 @@
+const SCRAPED_DATA_KEY = "assistiveBotScrapedData";
+
+const state = {
+  running: false,
+  config: null,
+  timerId: null,
+  iterations: 0,
+  announcedStart: false,
+  compareCurrentPage: 1,
+  compareLastProcessedUrl: "",
+  compareEmptyRetry: 0
+};
+
+function announce(message) {
+  if (!("speechSynthesis" in window)) {
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(message));
+  } catch (_) {
+    // Ignore speech errors in pages that block autoplay-style features.
+  }
+}
+
+function parsePrice(text) {
+  const match = (text || "").replace(/,/g, "").match(/\d+(?:\.\d{1,2})?/);
+  return match ? match[0] : "";
+}
+
+function getPlatformFromHost() {
+  const host = location.hostname;
+  if (host.includes("taobao.com")) {
+    return "taobao";
+  }
+  if (host.includes("jd.com")) {
+    return "jd";
+  }
+  return "unknown";
+}
+
+function dedupeByLink(items) {
+  const map = new Map();
+  for (const item of items) {
+    if (!item.link) {
+      continue;
+    }
+    if (!map.has(item.link)) {
+      map.set(item.link, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function scrapeTaobao(keyword, page) {
+  const links = Array.from(document.querySelectorAll('a[href*="item.taobao.com/item.htm"]'));
+  const records = links
+    .map((anchor) => {
+      const container = anchor.closest("div") || anchor;
+      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
+      const title = (anchor.innerText || anchor.title || "").trim();
+      if (!title || title.length < 2) {
+        return null;
+      }
+      return {
+        keyword,
+        platform: "taobao",
+        page,
+        title,
+        price: parsePrice(text),
+        shop: "",
+        link: anchor.href,
+        capturedAt: new Date().toISOString()
+      };
+    })
+    .filter(Boolean);
+  return dedupeByLink(records);
+}
+
+function scrapeJd(keyword, page) {
+  const links = Array.from(document.querySelectorAll('a[href*="item.jd.com/"]'));
+  const records = links
+    .map((anchor) => {
+      const container = anchor.closest("li") || anchor.closest("div") || anchor;
+      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
+      const title = (anchor.innerText || anchor.title || "").trim();
+      if (!title || title.length < 2) {
+        return null;
+      }
+      const shopEl = container.querySelector('.curr-shop, .shopName, [class*="shop"] a');
+      return {
+        keyword,
+        platform: "jd",
+        page,
+        title,
+        price: parsePrice(text),
+        shop: (shopEl?.innerText || "").trim(),
+        link: anchor.href.startsWith("http") ? anchor.href : `https:${anchor.href}`,
+        capturedAt: new Date().toISOString()
+      };
+    })
+    .filter(Boolean);
+  return dedupeByLink(records);
+}
+
+async function storeRecords(records) {
+  if (!records.length) {
+    return;
+  }
+  const existing = await chrome.storage.local.get(SCRAPED_DATA_KEY);
+  const list = existing[SCRAPED_DATA_KEY] || [];
+
+  function makeKey(record) {
+    if (record.link) {
+      return `${record.platform || ""}|${record.keyword || ""}|${record.link}`;
+    }
+    return `${record.url || ""}|${record.title || ""}|${record.capturedAt || ""}`;
+  }
+
+  const existingKeys = new Set(
+    list.map((r) => makeKey(r))
+  );
+
+  for (const record of records) {
+    const key = makeKey(record);
+    if (existingKeys.has(key)) {
+      continue;
+    }
+    existingKeys.add(key);
+    list.push(record);
+  }
+
+  await chrome.storage.local.set({ [SCRAPED_DATA_KEY]: list });
+}
+
+function getFirstText(selector) {
+  const el = document.querySelector(selector);
+  if (!el) {
+    return "";
+  }
+  return (el.innerText || el.textContent || "").trim();
+}
+
+function getFirstLink(selector) {
+  const el = document.querySelector(selector);
+  if (!el) {
+    return "";
+  }
+  if (el.href) {
+    return el.href;
+  }
+  const nestedAnchor = el.querySelector("a[href]");
+  return nestedAnchor?.href || "";
+}
+
+function parseFields(rawText) {
+  const lines = (rawText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines
+    .map((line) => {
+      const idx = line.indexOf("=");
+      if (idx <= 0 || idx >= line.length - 1) {
+        return null;
+      }
+      const name = line.slice(0, idx).trim();
+      const selector = line.slice(idx + 1).trim();
+      if (!name || !selector) {
+        return null;
+      }
+      return { name, selector };
+    })
+    .filter(Boolean);
+}
+
+async function scrapeCurrentPage(config) {
+  const fields = parseFields(config.fieldsMapping);
+  const data = {
+    url: location.href,
+    title: document.title,
+    capturedAt: new Date().toISOString()
+  };
+
+  for (const field of fields) {
+    data[field.name] = getFirstText(field.selector);
+  }
+
+  if (config.captureLinkSelector) {
+    data.capturedLink = getFirstLink(config.captureLinkSelector);
+  }
+
+  await storeRecords([data]);
+  return data;
+}
+
+function tryClick(selector) {
+  if (!selector) {
+    return false;
+  }
+  const el = document.querySelector(selector);
+  if (!el) {
+    return false;
+  }
+  el.click();
+  return true;
+}
+
+function getNextSelectorForPlatform(platform) {
+  if (platform === "taobao") {
+    return "a.next, .next-next, .next-pagination-item.next";
+  }
+  if (platform === "jd") {
+    return "a.pn-next, .pn-next";
+  }
+  return "";
+}
+
+async function reportProgressFromListener(progress) {
+  try {
+    await chrome.runtime.sendMessage({
+      type: "BOT_PROGRESS_UPDATE",
+      payload: {
+        progress
+      }
+    });
+  } catch (_) {
+    // Ignore progress failures.
+  }
+}
+
+async function runCompareStep() {
+  if (!state.running || !state.config) {
+    return;
+  }
+
+  const platform = state.config.platform || getPlatformFromHost();
+  if (platform === "unknown") {
+    stopAutomation("当前页面不是支持的比价平台");
+    return;
+  }
+
+  if (state.compareLastProcessedUrl === location.href) {
+    return;
+  }
+
+  let records = [];
+  if (platform === "taobao") {
+    records = scrapeTaobao(state.config.keyword || "", state.compareCurrentPage);
+  } else if (platform === "jd") {
+    records = scrapeJd(state.config.keyword || "", state.compareCurrentPage);
+  }
+
+  if (records.length === 0) {
+    state.compareEmptyRetry += 1;
+    if (state.compareEmptyRetry <= 3) {
+      window.scrollBy({ top: 800, behavior: "smooth" });
+      return;
+    }
+    stopAutomation(`比价结束：${platform} 当前页未采集到商品`);
+    return;
+  }
+
+  state.compareEmptyRetry = 0;
+  state.compareLastProcessedUrl = location.href;
+
+  await storeRecords(records);
+  await reportProgressFromListener({
+    currentPage: state.compareCurrentPage,
+    lastCapturedCount: records.length,
+    currentUrl: location.href
+  });
+
+  if (state.compareCurrentPage >= Number(state.config.maxPages || 1)) {
+    stopAutomation(`比价完成：${platform} 共 ${state.compareCurrentPage} 页`);
+    return;
+  }
+
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+
+  const nextSelector = getNextSelectorForPlatform(platform);
+  const clicked = tryClick(nextSelector);
+  if (!clicked) {
+    stopAutomation(`比价结束：${platform} 未找到下一页按钮`);
+    return;
+  }
+
+  state.compareCurrentPage += 1;
+  await reportProgressFromListener({
+    currentPage: state.compareCurrentPage,
+    currentUrl: location.href
+  });
+}
+
+async function stepAutomation() {
+  if (!state.running || !state.config) {
+    return;
+  }
+
+  if (state.config.compareMode) {
+    await runCompareStep();
+    return;
+  }
+
+  const cfg = state.config;
+
+  if (cfg.targetClickSelector && state.iterations === 0) {
+    tryClick(cfg.targetClickSelector);
+  }
+
+  await scrapeCurrentPage(cfg);
+
+  window.scrollBy({
+    top: Number(cfg.scrollStep) || 600,
+    left: 0,
+    behavior: cfg.smoothScroll ? "smooth" : "auto"
+  });
+
+  state.iterations += 1;
+
+  const reachedMax = Number(cfg.maxIterations) > 0 && state.iterations >= Number(cfg.maxIterations);
+  if (reachedMax) {
+    stopAutomation("达到最大执行次数，已停止。");
+    return;
+  }
+
+  const nearBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 40;
+  if (nearBottom && cfg.nextPageSelector) {
+    const clicked = tryClick(cfg.nextPageSelector);
+    if (clicked && cfg.enableSpeech) {
+      announce("已尝试翻到下一页");
+    }
+  }
+}
+
+function startAutomation(config, source = "manual", progress = null) {
+  state.running = true;
+  state.config = {
+    intervalMs: 4000,
+    scrollStep: 600,
+    maxIterations: 30,
+    fieldsMapping: "",
+    targetClickSelector: "",
+    nextPageSelector: "",
+    captureLinkSelector: "",
+    smoothScroll: true,
+    enableSpeech: false,
+    compareMode: false,
+    platform: "",
+    keyword: "",
+    maxPages: 1,
+    ...config
+  };
+  state.iterations = 0;
+  state.compareLastProcessedUrl = "";
+  state.compareEmptyRetry = 0;
+  state.compareCurrentPage = Math.max(1, Number(progress?.currentPage) || 1);
+
+  if (state.timerId) {
+    clearInterval(state.timerId);
+  }
+
+  state.timerId = setInterval(() => {
+    stepAutomation().catch(() => {});
+  }, Math.max(800, Number(state.config.intervalMs) || 4000));
+
+  stepAutomation().catch(() => {});
+
+  if (state.config.enableSpeech && (!state.announcedStart || source === "manual")) {
+    announce("自动浏览机器人已启动");
+    state.announcedStart = true;
+  }
+}
+
+function stopAutomation(reason = "已停止自动浏览") {
+  state.running = false;
+  state.config = null;
+  state.iterations = 0;
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  announce(reason);
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  void sender;
+
+  if (message?.type === "BOT_START") {
+    startAutomation(message.payload?.config || {}, "manual", null);
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message?.type === "BOT_STOP") {
+    stopAutomation("已手动停止");
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message?.type === "BOT_STATUS") {
+    sendResponse({
+      ok: true,
+      running: state.running,
+      iterations: state.iterations,
+      compareCurrentPage: state.compareCurrentPage,
+      url: location.href
+    });
+    return;
+  }
+
+  if (message?.type === "BOT_RESUME_ON_NAVIGATION") {
+    startAutomation(
+      message.payload?.config || {},
+      "resume",
+      message.payload?.progress || null
+    );
+    sendResponse({ ok: true });
+    return;
+  }
+});

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Assistive Web Bot",
+  "version": "0.2.0",
+  "description": "公益无障碍浏览器机器人：自动滚动翻页、多平台采集与比价。",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Assistive Web Bot"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "options_page": "dashboard.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
