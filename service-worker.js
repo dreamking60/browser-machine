@@ -1,6 +1,8 @@
 const RUNNING_TABS_KEY = "assistiveBotRunningTabs";
 const SETTINGS_KEY = "assistiveBotSettings";
 const SCHEDULE_ALARM = "assistiveBotScheduleCompare";
+const LOGS_KEY = "assistiveBotErrorLogs";
+const LOGS_MAX = 500;
 
 async function getRunningTabs() {
   const data = await chrome.storage.local.get(RUNNING_TABS_KEY);
@@ -19,6 +21,25 @@ async function getSettings() {
 async function setSettings(partial) {
   const old = await getSettings();
   await chrome.storage.local.set({ [SETTINGS_KEY]: { ...old, ...partial } });
+}
+
+async function appendLog(level, source, code, message, extra = {}) {
+  try {
+    const data = await chrome.storage.local.get(LOGS_KEY);
+    const logs = data[LOGS_KEY] || [];
+    logs.push({
+      at: Date.now(),
+      level: level || "info",
+      source: source || "background",
+      code: code || "unknown",
+      message: String(message || ""),
+      extra
+    });
+    const trimmed = logs.slice(-LOGS_MAX);
+    await chrome.storage.local.set({ [LOGS_KEY]: trimmed });
+  } catch (_) {
+    // Ignore logging failures.
+  }
 }
 
 function sleep(ms) {
@@ -96,6 +117,7 @@ async function startCompareRun(payload, source = "manual") {
   const runName = String(payload?.runName || "").trim() || `${keyword}-${new Date().toLocaleString()}`;
 
   if (!keyword) {
+    await appendLog("error", "compare", "keyword_required", "启动任务失败：关键词为空", { source });
     return { ok: false, error: "Keyword is required" };
   }
 
@@ -103,7 +125,10 @@ async function startCompareRun(payload, source = "manual") {
   await Promise.all(
     targets.map(async (target) => {
       const tab = await chrome.tabs.create({ url: target.url, active: false });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        await appendLog("error", "compare", "create_tab_failed", "创建采集标签页失败", { platform: target.platform, source });
+        return;
+      }
 
       const config = {
         compareMode: true,
@@ -155,11 +180,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const scheduleConfig = await getScheduleConfigFromSettings();
   if (!scheduleConfig.enabled || !String(scheduleConfig.keyword || "").trim()) {
     await syncScheduleAlarm({ enabled: false });
+    await appendLog("warn", "schedule", "disabled_or_empty", "定时任务未开启或关键词为空，已停止调度", {
+      enabled: Boolean(scheduleConfig.enabled),
+      keyword: scheduleConfig.keyword || ""
+    });
     return;
   }
 
   if (await hasCompareTaskRunning()) {
     await setSettings({ scheduleLastRun: { at: Date.now(), status: "skipped_running" } });
+    await appendLog("info", "schedule", "skipped_running", "定时任务跳过：当前已有任务运行中");
     return;
   }
 
@@ -173,10 +203,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         error: res.ok ? "" : (res.error || "unknown")
       }
     });
+    if (!res.ok) {
+      await appendLog("error", "schedule", "start_failed", res.error || "定时任务启动失败");
+    }
   } catch (err) {
     await setSettings({
       scheduleLastRun: { at: Date.now(), status: "failed", error: String(err) }
     });
+    await appendLog("error", "schedule", "alarm_exception", String(err));
   }
 });
 
@@ -229,7 +263,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "BOT_START_COMPARE") {
     startCompareRun(message.payload || {}, "manual")
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch(async (err) => {
+        await appendLog("error", "compare", "start_exception", String(err), { source: "manual" });
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
 
@@ -247,7 +284,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     setSettings({ scheduleConfig })
       .then(() => syncScheduleAlarm(scheduleConfig))
       .then((syncRes) => sendResponse({ ok: true, scheduleConfig, syncRes }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch(async (err) => {
+        await appendLog("error", "schedule", "set_config_failed", String(err), scheduleConfig);
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
 
@@ -260,7 +300,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           scheduleLastRun: settings.scheduleLastRun || null
         });
       })
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch(async (err) => {
+        await appendLog("error", "schedule", "get_config_failed", String(err));
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
 
@@ -268,23 +311,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     getScheduleConfigFromSettings()
       .then(async (config) => {
         if (!config.enabled) {
+          await appendLog("warn", "schedule", "run_now_disabled", "手动触发失败：定时任务未开启");
           sendResponse({ ok: false, error: "定时任务未开启" });
           return;
         }
         if (!config.keyword) {
+          await appendLog("warn", "schedule", "run_now_empty_keyword", "手动触发失败：定时任务关键词为空");
           sendResponse({ ok: false, error: "定时任务关键词为空" });
           return;
         }
         if (await hasCompareTaskRunning()) {
+          await appendLog("info", "schedule", "run_now_skipped_running", "手动触发跳过：已有任务运行中");
           sendResponse({ ok: false, error: "当前已有任务运行中" });
           return;
         }
         const runName = `手动触发定时-${config.keyword}-${new Date().toLocaleString()}`;
         const res = await startCompareRun({ ...config, runName }, "schedule_manual");
         await setSettings({ scheduleLastRun: { at: Date.now(), status: res.ok ? "started" : "failed", error: res.error || "" } });
+        if (!res.ok) {
+          await appendLog("error", "schedule", "run_now_failed", res.error || "手动触发定时任务失败");
+        }
         sendResponse(res);
       })
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch(async (err) => {
+        await appendLog("error", "schedule", "run_now_exception", String(err));
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
 

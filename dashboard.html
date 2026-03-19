@@ -20,6 +20,7 @@
           <button class="nav-btn" data-jump="panelFilter">筛选</button>
           <button class="nav-btn" data-jump="panelAnalysis">分析</button>
           <button class="nav-btn" data-jump="panelExport">导出</button>
+          <button class="nav-btn" data-jump="panelLogs">日志</button>
         </div>
 
         <h2>分析视图</h2>
@@ -205,6 +206,31 @@
           <div class="checks-row">
             <label><input id="darkMode" type="checkbox" /> 深色模式</label>
             <label><input id="mergeSimilar" type="checkbox" checked /> 同款归并分析</label>
+          </div>
+        </section>
+
+        <section class="panel" id="panelLogs">
+          <div class="title-row">
+            <h2>错误日志与统计</h2>
+            <div class="actions">
+              <button id="refreshLogsBtn" class="btn">刷新日志</button>
+              <button id="clearLogsBtn" class="btn danger">清空日志</button>
+            </div>
+          </div>
+          <div class="stats" id="logStats"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>级别</th>
+                  <th>来源</th>
+                  <th>代码</th>
+                  <th>信息</th>
+                </tr>
+              </thead>
+              <tbody id="logBody"></tbody>
+            </table>
           </div>
         </section>
       </main>

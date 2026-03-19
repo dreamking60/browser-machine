@@ -1,5 +1,6 @@
 const SCRAPED_DATA_KEY = "assistiveBotScrapedData";
 const SETTINGS_KEY = "assistiveBotSettings";
+const LOGS_KEY = "assistiveBotErrorLogs";
 
 const ui = {
   rawRows: [],
@@ -28,6 +29,8 @@ const ui = {
     enableSpeech: false
   },
   scheduleLastRun: null
+  ,
+  logs: []
 };
 
 const PALETTE = ["#1b8b5a", "#3ea36f", "#66bb8a", "#8ccfa8", "#afdcc0", "#d1ead9", "#4f7f67", "#7ca88f"];
@@ -82,6 +85,12 @@ function formatNum(n) {
   if (!Number.isFinite(n)) return "-";
   if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
   return String(Math.round(n));
+}
+
+function logLevelLabel(level) {
+  if (level === "error") return "错误";
+  if (level === "warn") return "警告";
+  return "信息";
 }
 
 function sanitizeRows(rows) {
@@ -663,6 +672,62 @@ function renderScheduleStatus() {
   byId("scheduleStatus").textContent = `定时状态：${txt.join(" · ")}`;
 }
 
+async function refreshLogs() {
+  const data = await chrome.storage.local.get(LOGS_KEY);
+  ui.logs = data[LOGS_KEY] || [];
+  renderLogs();
+}
+
+async function clearLogs() {
+  await chrome.storage.local.set({ [LOGS_KEY]: [] });
+  ui.logs = [];
+  renderLogs();
+  setStatus("日志已清空");
+}
+
+function renderLogs() {
+  const statsRoot = byId("logStats");
+  const body = byId("logBody");
+  if (!statsRoot || !body) return;
+
+  const logs = [...ui.logs].sort((a, b) => (b.at || 0) - (a.at || 0));
+  const total = logs.length;
+  const errorCount = logs.filter((x) => x.level === "error").length;
+  const warnCount = logs.filter((x) => x.level === "warn").length;
+  const infoCount = logs.filter((x) => x.level === "info").length;
+  const sourceCount = new Set(logs.map((x) => x.source || "unknown")).size;
+
+  statsRoot.innerHTML = `
+    <div><span>${total}</span><small>日志总数</small></div>
+    <div><span>${errorCount}</span><small>错误</small></div>
+    <div><span>${warnCount}</span><small>警告</small></div>
+    <div><span>${infoCount}</span><small>信息</small></div>
+    <div><span>${sourceCount}</span><small>来源数</small></div>
+  `;
+
+  body.innerHTML = "";
+  if (!logs.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="5">暂无日志</td>`;
+    body.appendChild(tr);
+    return;
+  }
+
+  for (const log of logs.slice(0, 300)) {
+    const tr = document.createElement("tr");
+    const at = log.at ? new Date(log.at).toLocaleString() : "-";
+    const msg = truncate(String(log.message || "-"), 120);
+    tr.innerHTML = `
+      <td>${at}</td>
+      <td>${logLevelLabel(log.level)}</td>
+      <td>${log.source || "-"}</td>
+      <td>${log.code || "-"}</td>
+      <td title="${String(log.message || "").replace(/"/g, "&quot;")}">${msg}</td>
+    `;
+    body.appendChild(tr);
+  }
+}
+
 function renderAll() {
   setAnalysisButtons();
   setQuickNavButtons();
@@ -672,6 +737,7 @@ function renderAll() {
   renderAnalysisCharts();
   renderTable();
   renderScheduleStatus();
+  renderLogs();
 }
 
 async function refreshData() {
@@ -872,6 +938,8 @@ function bindEvents() {
 
   byId("saveScheduleBtn").addEventListener("click", saveSchedule);
   byId("runScheduleNowBtn").addEventListener("click", runScheduleNow);
+  byId("refreshLogsBtn").addEventListener("click", refreshLogs);
+  byId("clearLogsBtn").addEventListener("click", clearLogs);
 
   byId("darkMode").addEventListener("change", (e) => setDarkMode(e.target.checked));
   byId("mergeSimilar").addEventListener("change", (e) => setMergeSimilar(e.target.checked));
@@ -919,6 +987,7 @@ async function init() {
 
   bindEvents();
   await refreshScheduleFromBackground();
+  await refreshLogs();
   await refreshData();
 }
 

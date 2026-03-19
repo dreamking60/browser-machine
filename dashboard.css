@@ -143,6 +143,11 @@ input, select {
 .checks-row label { display: flex; align-items: center; gap: 8px; }
 .checks-row input { width: auto; }
 
+#logBody td {
+  font-size: 12px;
+  vertical-align: top;
+}
+
 .btn {
   border: 1px solid var(--line);
   border-radius: 8px;
