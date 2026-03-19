@@ -67,6 +67,18 @@ body {
 .run-item .name { font-weight: 700; font-size: 13px; }
 .run-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
+.project-link {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.project-link a {
+  color: #0a53a8;
+}
+
 .main {
   padding: 16px;
   display: grid;
