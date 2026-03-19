@@ -111,6 +111,13 @@ function sanitizeRows(rows) {
   });
 }
 
+function toOptionalNumber(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 function getRuns(rows) {
   const grouped = new Map();
   for (const row of rows) {
@@ -184,9 +191,9 @@ function applyFiltersToUI() {
 
 function filteredRowsBase() {
   const rows = rowsByRun();
-  const minSales = Number(ui.filters.minSales || "");
-  const minPrice = Number(ui.filters.minPrice || "");
-  const maxPrice = Number(ui.filters.maxPrice || "");
+  const minSales = toOptionalNumber(ui.filters.minSales);
+  const minPrice = toOptionalNumber(ui.filters.minPrice);
+  const maxPrice = toOptionalNumber(ui.filters.maxPrice);
 
   return rows.filter((row) => {
     if (ui.filters.platform && ui.filters.platform !== "all" && row.platform !== ui.filters.platform) return false;
