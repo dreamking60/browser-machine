@@ -28,6 +28,17 @@ function parsePrice(text) {
   return match ? match[0] : "";
 }
 
+function textFromSelectors(root, selectors) {
+  for (const selector of selectors) {
+    const el = root.querySelector(selector);
+    const text = (el?.innerText || el?.textContent || "").replace(/\s+/g, " ").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
 function getPlatformFromHost() {
   const host = location.hostname;
   if (host.includes("taobao.com")) {
@@ -52,24 +63,90 @@ function dedupeByLink(items) {
   return Array.from(map.values());
 }
 
+function normalizeProductLink(rawHref) {
+  try {
+    const url = new URL(rawHref, location.href);
+    const blocked = [
+      "spm",
+      "ali_trackid",
+      "scm",
+      "initiative_id",
+      "from",
+      "sourceType",
+      "abbucket",
+      "union_lens"
+    ];
+    for (const key of blocked) {
+      url.searchParams.delete(key);
+    }
+    return `${url.origin}${url.pathname}${url.search}`;
+  } catch (_) {
+    return rawHref || "";
+  }
+}
+
 function scrapeTaobao(keyword, page) {
-  const links = Array.from(document.querySelectorAll('a[href*="item.taobao.com/item.htm"]'));
+  const links = Array.from(
+    document.querySelectorAll(
+      [
+        'a[href*="item.taobao.com/item.htm"]',
+        'a[href*="detail.tmall.com/item.htm"]',
+        'a[href*="detail.tmall.hk/hk/item.htm"]',
+        'a[href*="world.taobao.com/item/"]'
+      ].join(",")
+    )
+  );
+
   const records = links
     .map((anchor) => {
-      const container = anchor.closest("div") || anchor;
-      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
-      const title = (anchor.innerText || anchor.title || "").trim();
-      if (!title || title.length < 2) {
+      const link = normalizeProductLink(anchor.href);
+      if (!link || link.includes("click.simba.taobao.com")) {
         return null;
       }
+
+      const container =
+        anchor.closest('[data-name="item"]') ||
+        anchor.closest("li") ||
+        anchor.closest('div[class*="Card"]') ||
+        anchor.closest("div") ||
+        anchor;
+
+      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
+      const title =
+        (anchor.getAttribute("title") || "").trim() ||
+        textFromSelectors(container, [
+          '[class*="title"]',
+          "h3",
+          'a[data-spm-anchor-id*="title"]'
+        ]) ||
+        (anchor.innerText || "").replace(/\s+/g, " ").trim();
+
+      if (!title || title.length < 4) {
+        return null;
+      }
+
+      const priceText =
+        textFromSelectors(container, [
+          '[class*="Price--priceInt"]',
+          '[class*="priceInt"]',
+          '[class*="price"]'
+        ]) || parsePrice(text);
+
+      const shop =
+        textFromSelectors(container, [
+          '[class*="ShopInfo"] a',
+          '[class*="shop"] a',
+          '[class*="seller"] a'
+        ]) || "";
+
       return {
         keyword,
         platform: "taobao",
         page,
         title,
-        price: parsePrice(text),
-        shop: "",
-        link: anchor.href,
+        price: parsePrice(priceText || text),
+        shop,
+        link,
         capturedAt: new Date().toISOString()
       };
     })
@@ -209,7 +286,12 @@ function tryClick(selector) {
 
 function getNextSelectorForPlatform(platform) {
   if (platform === "taobao") {
-    return "a.next, .next-next, .next-pagination-item.next";
+    return [
+      ".next-pagination-item.next:not(.next-disabled)",
+      ".next-next:not(.next-disabled)",
+      "a.next:not(.disabled)",
+      "button.next-btn-next:not([disabled])"
+    ].join(",");
   }
   if (platform === "jd") {
     return "a.pn-next, .pn-next";
