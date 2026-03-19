@@ -64,6 +64,30 @@
             <button id="startBtn" class="btn primary">启动采集</button>
             <button id="stopBtn" class="btn danger">停止全部</button>
           </div>
+
+          <hr />
+          <h3>定时任务（需手动开启）</h3>
+          <div class="form-grid">
+            <label class="check"><input id="scheduleEnabled" type="checkbox" /> 开启定时任务</label>
+            <label>定时关键词
+              <input id="scheduleKeyword" type="text" placeholder="例如：万历十五年" />
+            </label>
+            <label>每个平台页数
+              <input id="schedulePages" type="number" min="1" value="2" />
+            </label>
+            <label>触发间隔（分钟）
+              <input id="scheduleIntervalMinutes" type="number" min="1" value="60" />
+            </label>
+            <label>执行间隔（毫秒）
+              <input id="scheduleIntervalMs" type="number" min="1000" value="4000" />
+            </label>
+            <label class="check"><input id="scheduleSpeech" type="checkbox" /> 定时任务语音提示</label>
+          </div>
+          <div class="actions">
+            <button id="saveScheduleBtn" class="btn primary">保存定时配置</button>
+            <button id="runScheduleNowBtn" class="btn">立即执行一次</button>
+            <span id="scheduleStatus" class="status">定时状态：未开启</span>
+          </div>
         </section>
 
         <section class="panel" id="panelFilter">
@@ -139,6 +163,15 @@
           <div class="title-row">
             <h2>数据分析</h2>
             <div id="activeRunText" class="active-run">当前：全部任务</div>
+          </div>
+          <div class="export-row">
+            <label>历史趋势周期
+              <select id="trendRangeDays">
+                <option value="7">近7天</option>
+                <option value="14" selected>近14天</option>
+                <option value="30">近30天</option>
+              </select>
+            </label>
           </div>
           <div class="stats" id="analysisStats"></div>
           <div class="charts" id="analysisCharts"></div>

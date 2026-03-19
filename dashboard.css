@@ -116,6 +116,8 @@ body {
 }
 
 h2 { margin: 0 0 10px; font-size: 20px; }
+h3 { margin: 6px 0 10px; font-size: 16px; }
+hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
 .status, .active-run { color: var(--muted); font-size: 13px; margin: 0; }
 
 .form-grid {
@@ -176,6 +178,15 @@ input, select {
   background: #fff;
 }
 .chart-card h3 { margin: 0 0 8px; font-size: 14px; }
+.line-chart-wrap { width: 100%; overflow-x: auto; }
+.line-chart-svg { width: 100%; min-width: 320px; height: 200px; display: block; }
+.axis-line { stroke: var(--line); stroke-width: 1; }
+.grid-line { stroke: color-mix(in srgb, var(--line) 70%, transparent); stroke-width: 1; }
+.line-price { stroke: #3ea36f; stroke-width: 2; fill: none; }
+.line-sales { stroke: #3f7db8; stroke-width: 2; fill: none; }
+.point-price { fill: #3ea36f; }
+.point-sales { fill: #3f7db8; }
+.legend-mini { font-size: 12px; color: var(--muted); display: flex; gap: 12px; margin-bottom: 6px; }
 
 .pie-wrap {
   display: grid;

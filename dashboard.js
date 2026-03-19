@@ -17,7 +17,17 @@ const ui = {
   },
   savedViews: {},
   mergeSimilar: true,
-  darkMode: false
+  darkMode: false,
+  trendRangeDays: 14,
+  schedule: {
+    enabled: false,
+    keyword: "",
+    maxPages: 2,
+    intervalMinutes: 60,
+    intervalMs: 4000,
+    enableSpeech: false
+  },
+  scheduleLastRun: null
 };
 
 const PALETTE = ["#1b8b5a", "#3ea36f", "#66bb8a", "#8ccfa8", "#afdcc0", "#d1ead9", "#4f7f67", "#7ca88f"];
@@ -50,7 +60,7 @@ function parseSales(v) {
 function cleanShopName(v) {
   let s = String(v || "").replace(/\s+/g, " ").trim();
   s = s.replace(/^\d+\s*年老店/g, "").trim();
-  s = s.replace(/^(老店|品牌店|品质店|严选店|企业店|官方店|旗舰店)/g, "").trim();
+  s = s.replace(/^(老店|品牌店|品质店|严选店|企业店|官方店|旗舰店|专营店)/g, "").trim();
   s = s.replace(/[【】\[\]()（）]/g, "").trim();
   return s;
 }
@@ -60,7 +70,7 @@ function normalizeTitle(v) {
     .toLowerCase()
     .replace(/[【】\[\]()（）\-—_·•:：,.，。!！?？'"“”‘’`~|/\\]/g, "")
     .replace(/\s+/g, "")
-    .replace(/(包邮|正版|现货|官方|旗舰|店铺|特装|刷边|典藏|精装|平装|新品)/g, "");
+    .replace(/(包邮|正版|现货|官方|旗舰|店铺|特装|刷边|典藏|精装|平装|新品|京东|淘宝)/g, "");
 }
 
 function truncate(v, len = 64) {
@@ -80,7 +90,7 @@ function sanitizeRows(rows) {
     const salesNum = parseSales(row.sales);
     const shop = cleanShopName(row.shop || "") || "未知店铺";
     const titleNorm = normalizeTitle(row.title || "");
-    const productKey = `${row.platform || "unknown"}|${titleNorm.slice(0, 50)}`;
+    const productKey = `${row.platform || "unknown"}|${titleNorm.slice(0, 60)}`;
     return {
       ...row,
       _price: priceNum,
@@ -215,13 +225,12 @@ function rowsForTable() {
   if (ui.activeAnalysis === "jd") rows = rows.filter((r) => r.platform === "jd");
 
   const mode = ui.filters.sortMode || "price_asc";
-  const sorted = [...rows].sort((a, b) => {
+  return [...rows].sort((a, b) => {
     if (mode === "price_desc") return (b._price ?? -1) - (a._price ?? -1);
     if (mode === "sales_desc") return (b._sales ?? -1) - (a._sales ?? -1);
     if (mode === "time_desc") return (b.capturedAt || "").localeCompare(a.capturedAt || "");
     return (a._price ?? Number.POSITIVE_INFINITY) - (b._price ?? Number.POSITIVE_INFINITY);
   });
-  return sorted;
 }
 
 function groupedCount(rows, keyFn) {
@@ -270,6 +279,96 @@ function salesBuckets(rows) {
     else buckets[3][1] += 1;
   }
   return buckets;
+}
+
+function seriesByDay(rows, days) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - days + 1);
+
+  const map = new Map();
+  for (let i = 0; i < days; i += 1) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    map.set(key, { date: key, prices: [], sales: [] });
+  }
+
+  for (const r of rows) {
+    const dt = r.capturedAt ? new Date(r.capturedAt) : null;
+    if (!dt || Number.isNaN(dt.getTime())) continue;
+    const key = dt.toISOString().slice(0, 10);
+    if (!map.has(key)) continue;
+    const it = map.get(key);
+    if (Number.isFinite(r._price)) it.prices.push(r._price);
+    if (Number.isFinite(r._sales)) it.sales.push(r._sales);
+  }
+
+  return Array.from(map.values()).map((x) => ({
+    date: x.date,
+    avgPrice: x.prices.length ? x.prices.reduce((a, b) => a + b, 0) / x.prices.length : 0,
+    sumSales: x.sales.length ? x.sales.reduce((a, b) => a + b, 0) : 0
+  }));
+}
+
+function linePath(points, width, height, maxY) {
+  if (!points.length) return "";
+  const step = points.length > 1 ? (width / (points.length - 1)) : 0;
+  return points
+    .map((v, i) => {
+      const x = i * step;
+      const y = maxY > 0 ? (height - (v / maxY) * height) : height;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function trendChartHtml(rows) {
+  const days = Math.max(1, Number(ui.trendRangeDays) || 14);
+  const series = seriesByDay(rows, days);
+  const prices = series.map((x) => x.avgPrice);
+  const sales = series.map((x) => x.sumSales);
+  const maxPrice = Math.max(1, ...prices);
+  const maxSales = Math.max(1, ...sales);
+
+  const w = 520;
+  const h = 130;
+  const pricePath = linePath(prices, w, h, maxPrice);
+  const salesPath = linePath(sales, w, h, maxSales);
+
+  const pointsPrice = prices.map((v, i) => {
+    const x = series.length > 1 ? (i * (w / (series.length - 1))) : 0;
+    const y = h - (v / maxPrice) * h;
+    return `<circle class="point-price" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" />`;
+  }).join("");
+
+  const pointsSales = sales.map((v, i) => {
+    const x = series.length > 1 ? (i * (w / (series.length - 1))) : 0;
+    const y = h - (v / maxSales) * h;
+    return `<circle class="point-sales" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" />`;
+  }).join("");
+
+  const labels = series.filter((_, i) => i === 0 || i === series.length - 1 || i % Math.max(1, Math.floor(series.length / 4)) === 0)
+    .map((x, i) => `<span>${x.date.slice(5)}</span>`)
+    .join("<span> </span>");
+
+  return `
+    <div class="chart-card">
+      <h3>历史趋势（价格均值/销量总和）</h3>
+      <div class="legend-mini"><span>绿色：均价</span><span>蓝色：销量</span></div>
+      <div class="line-chart-wrap">
+        <svg class="line-chart-svg" viewBox="0 0 ${w} 170" preserveAspectRatio="none">
+          <line class="axis-line" x1="0" y1="130" x2="${w}" y2="130" />
+          <line class="grid-line" x1="0" y1="65" x2="${w}" y2="65" />
+          <path class="line-price" d="${pricePath}" />
+          <path class="line-sales" d="${salesPath}" />
+          ${pointsPrice}
+          ${pointsSales}
+        </svg>
+      </div>
+      <div class="legend-mini">${labels}</div>
+    </div>
+  `;
 }
 
 function pieChartHtml(title, entries) {
@@ -323,6 +422,8 @@ function renderAnalysisCharts() {
     return;
   }
 
+  const trend = trendChartHtml(rows);
+
   if (ui.activeAnalysis === "compare") {
     const byPlatform = groupedCount(rows, (r) => r.platform).slice(0, 8);
     const avgPriceByPlatform = ["taobao", "jd"].map((p) => {
@@ -337,6 +438,7 @@ function renderAnalysisCharts() {
     });
 
     root.innerHTML = [
+      trend,
       pieChartHtml("平台占比", byPlatform),
       barChartHtml("平台均价", avgPriceByPlatform, (v) => `¥${v}`),
       barChartHtml("平台总销量", salesByPlatform, (v) => formatNum(v)),
@@ -349,6 +451,7 @@ function renderAnalysisCharts() {
   const topShopsBySales = groupedSum(rows, (r) => r._shop || "未知店铺", (r) => r._sales || 0).slice(0, 8);
 
   root.innerHTML = [
+    trend,
     pieChartHtml("店铺占比Top", topShopsByCount),
     barChartHtml("店铺销量Top", topShopsBySales, (v) => formatNum(v)),
     barChartHtml("价格分布", priceBuckets(rows)),
@@ -474,6 +577,7 @@ function exportAnalysisReport() {
     runId: ui.activeRunId,
     analysis: ui.activeAnalysis,
     mergeSimilar: ui.mergeSimilar,
+    trendRangeDays: ui.trendRangeDays,
     filters: ui.filters
   }, null, 2);
 
@@ -502,8 +606,8 @@ async function loadSettings() {
 }
 
 async function saveSettings(partial) {
-  const prev = await loadSettings();
-  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...prev, ...partial } });
+  const old = await loadSettings();
+  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...old, ...partial } });
 }
 
 function setAnalysisButtons() {
@@ -527,15 +631,47 @@ function renderSavedViews() {
   sel.innerHTML = `<option value="">请选择</option>${names.map((n) => `<option value="${n}">${n}</option>`).join("")}`;
 }
 
+function applyScheduleToUI() {
+  byId("scheduleEnabled").checked = Boolean(ui.schedule.enabled);
+  byId("scheduleKeyword").value = ui.schedule.keyword || "";
+  byId("schedulePages").value = ui.schedule.maxPages || 2;
+  byId("scheduleIntervalMinutes").value = ui.schedule.intervalMinutes || 60;
+  byId("scheduleIntervalMs").value = ui.schedule.intervalMs || 4000;
+  byId("scheduleSpeech").checked = Boolean(ui.schedule.enableSpeech);
+}
+
+function collectScheduleFromUI() {
+  ui.schedule = {
+    enabled: byId("scheduleEnabled").checked,
+    keyword: byId("scheduleKeyword").value.trim(),
+    maxPages: Math.max(1, Number(byId("schedulePages").value || 2)),
+    intervalMinutes: Math.max(1, Number(byId("scheduleIntervalMinutes").value || 60)),
+    intervalMs: Math.max(1000, Number(byId("scheduleIntervalMs").value || 4000)),
+    enableSpeech: byId("scheduleSpeech").checked
+  };
+}
+
+function renderScheduleStatus() {
+  const txt = [];
+  txt.push(ui.schedule.enabled ? "已开启" : "未开启");
+  if (ui.schedule.enabled) txt.push(`每${ui.schedule.intervalMinutes}分钟`);
+  if (ui.schedule.keyword) txt.push(`关键词:${ui.schedule.keyword}`);
+  if (ui.scheduleLastRun?.at) {
+    const at = new Date(ui.scheduleLastRun.at).toLocaleString();
+    txt.push(`上次:${ui.scheduleLastRun.status || "-"} @ ${at}`);
+  }
+  byId("scheduleStatus").textContent = `定时状态：${txt.join(" · ")}`;
+}
+
 function renderAll() {
   setAnalysisButtons();
   setQuickNavButtons();
   renderRunList();
   renderActiveRunText();
-  const analysisRows = rowsForAnalysis();
-  renderStats(analysisRows);
+  renderStats(rowsForAnalysis());
   renderAnalysisCharts();
   renderTable();
+  renderScheduleStatus();
 }
 
 async function refreshData() {
@@ -543,6 +679,47 @@ async function refreshData() {
   ui.rawRows = data[SCRAPED_DATA_KEY] || [];
   renderAll();
   setStatus(`已加载 ${ui.rawRows.length} 条数据`);
+}
+
+async function refreshScheduleFromBackground() {
+  const res = await chrome.runtime.sendMessage({ type: "BOT_GET_SCHEDULE" });
+  if (!res?.ok) return;
+  ui.schedule = {
+    ...ui.schedule,
+    ...(res.scheduleConfig || {})
+  };
+  ui.scheduleLastRun = res.scheduleLastRun || null;
+  applyScheduleToUI();
+  renderScheduleStatus();
+}
+
+async function saveSchedule() {
+  collectScheduleFromUI();
+  if (ui.schedule.enabled && !ui.schedule.keyword) {
+    setStatus("请填写定时关键词后再开启");
+    return;
+  }
+
+  const res = await chrome.runtime.sendMessage({ type: "BOT_SET_SCHEDULE", payload: ui.schedule });
+  if (!res?.ok) {
+    setStatus(`定时配置保存失败：${res?.error || "未知错误"}`);
+    return;
+  }
+
+  await saveSettings({ scheduleConfig: ui.schedule });
+  ui.scheduleLastRun = null;
+  renderScheduleStatus();
+  setStatus(ui.schedule.enabled ? "定时任务已开启并生效" : "定时任务已关闭");
+}
+
+async function runScheduleNow() {
+  const res = await chrome.runtime.sendMessage({ type: "BOT_RUN_SCHEDULE_NOW" });
+  if (!res?.ok) {
+    setStatus(`立即执行失败：${res?.error || "未知错误"}`);
+    return;
+  }
+  setStatus("已触发一次定时任务");
+  await refreshScheduleFromBackground();
 }
 
 async function startCompare() {
@@ -619,7 +796,8 @@ async function saveView() {
   ui.savedViews[name] = {
     filters: { ...ui.filters },
     analysis: ui.activeAnalysis,
-    mergeSimilar: ui.mergeSimilar
+    mergeSimilar: ui.mergeSimilar,
+    trendRangeDays: ui.trendRangeDays
   };
   await saveSettings({ dashboardSavedViews: ui.savedViews });
   renderSavedViews();
@@ -637,9 +815,11 @@ async function applyView() {
   ui.filters = { ...ui.filters, ...(view.filters || {}) };
   ui.activeAnalysis = view.analysis || "summary";
   ui.mergeSimilar = view.mergeSimilar !== false;
+  ui.trendRangeDays = Number(view.trendRangeDays || 14);
+  byId("trendRangeDays").value = String(ui.trendRangeDays);
   byId("mergeSimilar").checked = ui.mergeSimilar;
   applyFiltersToUI();
-  await saveSettings({ dashboardFilters: ui.filters, mergeSimilar: ui.mergeSimilar });
+  await saveSettings({ dashboardFilters: ui.filters, mergeSimilar: ui.mergeSimilar, trendRangeDays: ui.trendRangeDays });
   renderAll();
   setStatus(`已应用视图：${name}`);
 }
@@ -668,6 +848,12 @@ async function setMergeSimilar(enabled) {
   renderAll();
 }
 
+async function setTrendRangeDays(v) {
+  ui.trendRangeDays = Math.max(1, Number(v) || 14);
+  await saveSettings({ trendRangeDays: ui.trendRangeDays });
+  renderAll();
+}
+
 function bindEvents() {
   byId("startBtn").addEventListener("click", startCompare);
   byId("stopBtn").addEventListener("click", stopAll);
@@ -684,8 +870,12 @@ function bindEvents() {
   byId("applyViewBtn").addEventListener("click", applyView);
   byId("deleteViewBtn").addEventListener("click", deleteView);
 
+  byId("saveScheduleBtn").addEventListener("click", saveSchedule);
+  byId("runScheduleNowBtn").addEventListener("click", runScheduleNow);
+
   byId("darkMode").addEventListener("change", (e) => setDarkMode(e.target.checked));
   byId("mergeSimilar").addEventListener("change", (e) => setMergeSimilar(e.target.checked));
+  byId("trendRangeDays").addEventListener("change", (e) => setTrendRangeDays(e.target.value));
 
   const navButtons = Array.from(byId("analysisNav").querySelectorAll(".nav-btn"));
   for (const btn of navButtons) {
@@ -715,20 +905,20 @@ async function init() {
   byId("intervalMs").value = settings.intervalMs || 4000;
   byId("speech").checked = Boolean(settings.enableSpeech);
 
-  ui.filters = {
-    ...ui.filters,
-    ...(settings.dashboardFilters || {})
-  };
+  ui.filters = { ...ui.filters, ...(settings.dashboardFilters || {}) };
   ui.savedViews = settings.dashboardSavedViews || {};
   ui.mergeSimilar = settings.mergeSimilar !== false;
   ui.darkMode = Boolean(settings.dashboardDarkMode);
+  ui.trendRangeDays = Math.max(1, Number(settings.trendRangeDays || 14));
 
   applyFiltersToUI();
   byId("mergeSimilar").checked = ui.mergeSimilar;
+  byId("trendRangeDays").value = String(ui.trendRangeDays);
   applyTheme();
   renderSavedViews();
 
   bindEvents();
+  await refreshScheduleFromBackground();
   await refreshData();
 }
 
