@@ -155,6 +155,63 @@ function scrapeTaobao(keyword, page) {
 }
 
 function scrapeJd(keyword, page) {
+  const cardNodes = Array.from(
+    document.querySelectorAll(
+      [
+        ".plugin_goodsCardWrapper[data-sku]",
+        '[class*="goodsCardWrapper"][data-sku]'
+      ].join(",")
+    )
+  );
+
+  if (cardNodes.length > 0) {
+    const recordsFromCards = cardNodes
+      .map((card) => {
+        const sku = (card.getAttribute("data-sku") || "").trim();
+        if (!sku) {
+          return null;
+        }
+
+        const title =
+          textFromSelectors(card, [
+            'span[class*="_text_"][title]',
+            '[class*="goods_title"] [title]',
+            '[class*="title"] [title]'
+          ]) ||
+          "";
+        if (!title || title.length < 2) {
+          return null;
+        }
+
+        const priceText =
+          textFromSelectors(card, [
+            '[class*="_price_"]',
+            ".p-price i",
+            '[class*="price"]'
+          ]) || "";
+        const shop =
+          textFromSelectors(card, [
+            '[class*="_name_"] span',
+            '[class*="shopFloor"] [class*="name"] span',
+            '[class*="shop"] a'
+          ]) || "";
+
+        return {
+          keyword,
+          platform: "jd",
+          page,
+          title,
+          price: parsePrice(priceText),
+          shop,
+          link: `https://item.jd.com/${sku}.html`,
+          capturedAt: new Date().toISOString()
+        };
+      })
+      .filter(Boolean);
+
+    return dedupeByLink(recordsFromCards);
+  }
+
   const links = Array.from(
     document.querySelectorAll(
       [
@@ -343,6 +400,7 @@ function getNextSelectorForPlatform(platform) {
   }
   if (platform === "jd") {
     return [
+      '[class*="_pagination_next_"]:not([class*="_disabled_"])',
       "a.pn-next:not(.disabled)",
       ".pn-next:not(.disabled)",
       '[class*="pagination"] [class*="next"]:not(.disabled)',
