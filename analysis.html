@@ -10,7 +10,7 @@
     <div class="shell">
       <aside class="sidebar">
         <h1>数据分析</h1>
-        <p class="sub">分析与日志页</p>
+        <p class="sub">默认分析 + 高级分析</p>
 
         <h2>页面跳转</h2>
         <div class="analysis-nav">
@@ -18,12 +18,11 @@
           <button class="nav-btn active" disabled>数据分析页</button>
         </div>
 
-        <h2>分析视图</h2>
-        <div class="analysis-nav" id="analysisNav">
-          <button class="nav-btn active" data-view="summary">汇总</button>
+        <h2>默认分析视图</h2>
+        <div class="analysis-nav" id="simpleNav">
+          <button class="nav-btn active" data-view="summary">全部</button>
           <button class="nav-btn" data-view="taobao">淘宝</button>
           <button class="nav-btn" data-view="jd">京东</button>
-          <button class="nav-btn" data-view="compare">对比</button>
         </div>
 
         <h2>任务批次</h2>
@@ -31,11 +30,39 @@
       </aside>
 
       <main class="main">
-        <section class="panel" id="panelFilter">
+        <section class="panel" id="panelMode">
           <div class="title-row">
-            <h2>筛选与看板</h2>
+            <h2>分析模式</h2>
             <p id="status" class="status">状态：待加载</p>
           </div>
+          <div class="analysis-nav">
+            <button id="modeSimpleBtn" class="nav-btn active">默认分析（傻瓜式）</button>
+            <button id="modeAdvancedBtn" class="nav-btn">高级汇总分析</button>
+          </div>
+        </section>
+
+        <section class="panel" id="simplePanel">
+          <div class="title-row">
+            <h2>默认分析</h2>
+            <div id="simpleActiveRunText" class="active-run">当前：全部任务</div>
+          </div>
+          <div class="stats" id="simpleStats"></div>
+          <div class="charts" id="simpleCharts"></div>
+        </section>
+
+        <section class="panel advanced-only" id="panelFilter">
+          <div class="title-row">
+            <h2>高级筛选与汇总</h2>
+            <p class="status">面向数据运营场景</p>
+          </div>
+
+          <div class="analysis-nav" id="advancedNav">
+            <button class="nav-btn active" data-view="summary">汇总</button>
+            <button class="nav-btn" data-view="taobao">淘宝</button>
+            <button class="nav-btn" data-view="jd">京东</button>
+            <button class="nav-btn" data-view="compare">对比</button>
+          </div>
+
           <div class="form-grid">
             <label>平台筛选
               <select id="filterPlatform">
@@ -97,24 +124,24 @@
           </div>
         </section>
 
-        <section class="panel" id="panelAnalysis">
+        <section class="panel advanced-only" id="panelAnalysis">
           <div class="title-row">
-            <h2>数据分析</h2>
-            <div id="activeRunText" class="active-run">当前：全部任务</div>
+            <h2>高级汇总分析</h2>
+            <div id="advancedActiveRunText" class="active-run">当前：全部任务</div>
           </div>
-          <div class="stats" id="analysisStats"></div>
-          <div class="charts" id="analysisCharts"></div>
+          <div class="stats" id="advancedStats"></div>
+          <div class="charts" id="advancedCharts"></div>
         </section>
 
-        <section class="panel" id="panelExport">
-          <h2>导出中心</h2>
+        <section class="panel advanced-only" id="panelExport">
+          <h2>高级导出</h2>
           <div class="export-row">
             <button id="exportReportBtn" class="btn primary">导出分析报告</button>
             <button id="refreshBtn" class="btn">刷新数据</button>
           </div>
         </section>
 
-        <section class="panel" id="panelLogs">
+        <section class="panel advanced-only" id="panelLogs">
           <div class="title-row">
             <h2>错误日志与统计</h2>
             <div class="actions">

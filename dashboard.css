@@ -195,6 +195,8 @@ input, select {
   background: #fff;
 }
 .chart-card h3 { margin: 0 0 8px; font-size: 14px; }
+.hidden { display: none !important; }
+.advanced-only.hidden { display: none; }
 .line-chart-wrap { width: 100%; overflow-x: auto; }
 .line-chart-svg { width: 100%; min-width: 320px; height: 200px; display: block; }
 .axis-line { stroke: var(--line); stroke-width: 1; }

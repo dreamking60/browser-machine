@@ -1,12 +1,15 @@
 const SCRAPED_DATA_KEY = "assistiveBotScrapedData";
 const SETTINGS_KEY = "assistiveBotSettings";
 const LOGS_KEY = "assistiveBotErrorLogs";
+const PALETTE = ["#1b8b5a", "#3ea36f", "#66bb8a", "#8ccfa8", "#afdcc0", "#d1ead9", "#4f7f67", "#7ca88f"];
 
 const ui = {
   rawRows: [],
   logs: [],
   activeRunId: "all",
-  activeAnalysis: "summary",
+  analysisMode: "simple",
+  simpleView: "summary",
+  advancedView: "summary",
   filters: {
     platform: "all",
     shop: "",
@@ -21,8 +24,6 @@ const ui = {
   trendRangeDays: 14
 };
 
-const PALETTE = ["#1b8b5a", "#3ea36f", "#66bb8a", "#8ccfa8", "#afdcc0", "#d1ead9", "#4f7f67", "#7ca88f"];
-
 const byId = (id) => document.getElementById(id);
 const setStatus = (text) => (byId("status").textContent = `状态：${text}`);
 
@@ -30,10 +31,8 @@ function parsePrice(v) {
   const n = Number(String(v || "").replace(/[^\d.]/g, ""));
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
-
 function parseSales(v) {
   const s = String(v || "").replace(/,/g, "");
-  if (!s) return null;
   const m = s.match(/(\d+(?:\.\d+)?)(万|千)?\+?/);
   if (!m) return null;
   const base = Number(m[1]);
@@ -42,14 +41,12 @@ function parseSales(v) {
   if (m[2] === "千") return Math.round(base * 1000);
   return Math.round(base);
 }
-
 function toOptionalNumber(v) {
   const s = String(v ?? "").trim();
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
-
 function cleanShopName(v) {
   return String(v || "")
     .replace(/\s+/g, " ")
@@ -57,7 +54,6 @@ function cleanShopName(v) {
     .replace(/^(老店|品牌店|品质店|严选店|企业店|官方店|旗舰店|专营店)/g, "")
     .trim();
 }
-
 function normalizeTitle(v) {
   return String(v || "")
     .toLowerCase()
@@ -65,12 +61,10 @@ function normalizeTitle(v) {
     .replace(/\s+/g, "")
     .replace(/(包邮|正版|现货|官方|旗舰|店铺|特装|刷边|典藏|精装|平装|新品|京东|淘宝)/g, "");
 }
-
 function truncate(v, len = 64) {
   if (!v) return "";
   return v.length > len ? `${v.slice(0, len)}...` : v;
 }
-
 function formatNum(n) {
   if (!Number.isFinite(n)) return "-";
   if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
@@ -111,7 +105,6 @@ function renderRunList() {
     renderAll();
   };
   root.appendChild(all);
-
   for (const run of getRuns(ui.rawRows)) {
     const item = document.createElement("div");
     item.className = `run-item ${ui.activeRunId === run.runId ? "active" : ""}`;
@@ -125,9 +118,7 @@ function renderRunList() {
 }
 
 function rowsByRun() {
-  const rows = ui.activeRunId === "all"
-    ? ui.rawRows
-    : ui.rawRows.filter((r) => (r.runId || "legacy") === ui.activeRunId);
+  const rows = ui.activeRunId === "all" ? ui.rawRows : ui.rawRows.filter((r) => (r.runId || "legacy") === ui.activeRunId);
   return sanitizeRows(rows);
 }
 
@@ -139,6 +130,8 @@ function collectFiltersFromUI() {
   ui.filters.minPrice = byId("filterMinPrice").value.trim();
   ui.filters.maxPrice = byId("filterMaxPrice").value.trim();
   ui.filters.sortMode = byId("sortMode").value;
+  ui.trendRangeDays = Math.max(1, Number(byId("trendRangeDays").value || 14));
+  ui.mergeSimilar = byId("mergeSimilar").checked;
 }
 
 function applyFiltersToUI() {
@@ -153,12 +146,11 @@ function applyFiltersToUI() {
   byId("mergeSimilar").checked = ui.mergeSimilar;
 }
 
-function filteredRowsBase() {
+function filterRowsAdvancedBase() {
   const rows = rowsByRun();
   const minSales = toOptionalNumber(ui.filters.minSales);
   const minPrice = toOptionalNumber(ui.filters.minPrice);
   const maxPrice = toOptionalNumber(ui.filters.maxPrice);
-
   return rows.filter((row) => {
     if (ui.filters.platform !== "all" && row.platform !== ui.filters.platform) return false;
     if (ui.filters.shop && !row._shop.toLowerCase().includes(ui.filters.shop.toLowerCase())) return false;
@@ -187,11 +179,27 @@ function mergeByProduct(rows) {
   return Array.from(map.values());
 }
 
-function rowsForAnalysis() {
-  let rows = filteredRowsBase();
-  if (ui.activeAnalysis === "taobao") rows = rows.filter((r) => r.platform === "taobao");
-  if (ui.activeAnalysis === "jd") rows = rows.filter((r) => r.platform === "jd");
+function rowsForSimple() {
+  let rows = rowsByRun();
+  if (ui.simpleView === "taobao") rows = rows.filter((r) => r.platform === "taobao");
+  if (ui.simpleView === "jd") rows = rows.filter((r) => r.platform === "jd");
+  return rows;
+}
+
+function rowsForAdvanced() {
+  let rows = filterRowsAdvancedBase();
+  if (ui.advancedView === "taobao") rows = rows.filter((r) => r.platform === "taobao");
+  if (ui.advancedView === "jd") rows = rows.filter((r) => r.platform === "jd");
   if (ui.mergeSimilar) rows = mergeByProduct(rows);
+  if (ui.filters.sortMode === "price_desc") {
+    rows = [...rows].sort((a, b) => (b._price || 0) - (a._price || 0));
+  } else if (ui.filters.sortMode === "sales_desc") {
+    rows = [...rows].sort((a, b) => (b._sales || 0) - (a._sales || 0));
+  } else if (ui.filters.sortMode === "time_desc") {
+    rows = [...rows].sort((a, b) => String(b.capturedAt || "").localeCompare(String(a.capturedAt || "")));
+  } else {
+    rows = [...rows].sort((a, b) => (a._price || 0) - (b._price || 0));
+  }
   return rows;
 }
 
@@ -204,7 +212,6 @@ function groupedCount(rows, keyFn) {
   }
   return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 }
-
 function groupedSum(rows, keyFn, valueFn) {
   const map = new Map();
   for (const r of rows) {
@@ -215,7 +222,6 @@ function groupedSum(rows, keyFn, valueFn) {
   }
   return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 }
-
 function priceBuckets(rows) {
   const buckets = [["0-50", 0], ["50-100", 0], ["100-300", 0], ["300-500", 0], ["500+", 0]];
   for (const r of rows) {
@@ -229,7 +235,6 @@ function priceBuckets(rows) {
   }
   return buckets;
 }
-
 function salesBuckets(rows) {
   const buckets = [["<100", 0], ["100-1k", 0], ["1k-10k", 0], ["10k+", 0]];
   for (const r of rows) {
@@ -269,21 +274,16 @@ function seriesByDay(rows, days) {
     sumSales: x.sales.length ? x.sales.reduce((a, b) => a + b, 0) : 0
   }));
 }
-
 function linePath(points, width, height, maxY) {
   if (!points.length) return "";
   const step = points.length > 1 ? width / (points.length - 1) : 0;
-  return points
-    .map((v, i) => {
-      const x = i * step;
-      const y = maxY > 0 ? height - (v / maxY) * height : height;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  return points.map((v, i) => {
+    const x = i * step;
+    const y = maxY > 0 ? height - (v / maxY) * height : height;
+    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 }
-
-function trendChartHtml(rows) {
-  const days = Math.max(1, Number(ui.trendRangeDays) || 14);
+function trendChartHtml(rows, days) {
   const series = seriesByDay(rows, days);
   const prices = series.map((x) => x.avgPrice);
   const sales = series.map((x) => x.sumSales);
@@ -293,24 +293,17 @@ function trendChartHtml(rows) {
   const h = 130;
   const pricePath = linePath(prices, w, h, maxPrice);
   const salesPath = linePath(sales, w, h, maxSales);
-
   const pointsPrice = prices.map((v, i) => {
     const x = series.length > 1 ? i * (w / (series.length - 1)) : 0;
     const y = h - (v / maxPrice) * h;
     return `<circle class="point-price" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" />`;
   }).join("");
-
   const pointsSales = sales.map((v, i) => {
     const x = series.length > 1 ? i * (w / (series.length - 1)) : 0;
     const y = h - (v / maxSales) * h;
     return `<circle class="point-sales" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" />`;
   }).join("");
-
-  const labels = series.filter((_, i) => i === 0 || i === series.length - 1 || i % Math.max(1, Math.floor(series.length / 4)) === 0)
-    .map((x) => `<span>${x.date.slice(5)}</span>`)
-    .join("<span> </span>");
-
-  return `<div class="chart-card"><h3>历史趋势（价格均值/销量总和）</h3><div class="legend-mini"><span>绿色：均价</span><span>蓝色：销量</span></div><div class="line-chart-wrap"><svg class="line-chart-svg" viewBox="0 0 ${w} 170" preserveAspectRatio="none"><line class="axis-line" x1="0" y1="130" x2="${w}" y2="130" /><line class="grid-line" x1="0" y1="65" x2="${w}" y2="65" /><path class="line-price" d="${pricePath}" /><path class="line-sales" d="${salesPath}" />${pointsPrice}${pointsSales}</svg></div><div class="legend-mini">${labels}</div></div>`;
+  return `<div class="chart-card"><h3>历史趋势（价格均值/销量总和）</h3><div class="legend-mini"><span>绿色：均价</span><span>蓝色：销量</span></div><div class="line-chart-wrap"><svg class="line-chart-svg" viewBox="0 0 ${w} 170" preserveAspectRatio="none"><line class="axis-line" x1="0" y1="130" x2="${w}" y2="130" /><line class="grid-line" x1="0" y1="65" x2="${w}" y2="65" /><path class="line-price" d="${pricePath}" /><path class="line-sales" d="${salesPath}" />${pointsPrice}${pointsSales}</svg></div></div>`;
 }
 
 function pieChartHtml(title, entries) {
@@ -322,12 +315,9 @@ function pieChartHtml(title, entries) {
     const end = (acc / total) * 360;
     return `${PALETTE[i % PALETTE.length]} ${start}deg ${end}deg`;
   });
-  const legend = entries
-    .map(([k, v], i) => `<div class="legend-item"><span class="legend-dot" style="background:${PALETTE[i % PALETTE.length]}"></span>${truncate(k, 14)} · ${v}</div>`)
-    .join("");
+  const legend = entries.map(([k, v], i) => `<div class="legend-item"><span class="legend-dot" style="background:${PALETTE[i % PALETTE.length]}"></span>${truncate(k, 14)} · ${v}</div>`).join("");
   return `<div class="chart-card"><h3>${title}</h3><div class="pie-wrap"><div class="pie" style="background: conic-gradient(${slices.join(",")});"></div><div class="legend">${legend || "<div class='legend-item'>暂无数据</div>"}</div></div></div>`;
 }
-
 function barChartHtml(title, entries, valueFmt = (v) => String(v)) {
   const max = Math.max(1, ...entries.map(([, v]) => v));
   const rows = entries.map(([k, v]) => {
@@ -337,35 +327,61 @@ function barChartHtml(title, entries, valueFmt = (v) => String(v)) {
   return `<div class="chart-card"><h3>${title}</h3><div class="bars">${rows || "暂无数据"}</div></div>`;
 }
 
-function renderStats(rows) {
+function renderStats(rows, containerId) {
   const total = rows.length;
   const shopCount = new Set(rows.map((r) => r._shop).filter(Boolean)).size;
-  const productCount = new Set(rows.map((r) => r._productKey)).size;
   const prices = rows.map((r) => r._price).filter((n) => Number.isFinite(n));
   const sales = rows.map((r) => r._sales).filter((n) => Number.isFinite(n));
   const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
   const totalSales = sales.length ? sales.reduce((a, b) => a + b, 0) : null;
-
-  byId("analysisStats").innerHTML = `
+  byId(containerId).innerHTML = `
     <div><span>${total}</span><small>结果数</small></div>
-    <div><span>${productCount}</span><small>同款数</small></div>
     <div><span>${shopCount}</span><small>店铺数</small></div>
-    <div><span>${avgPrice ? `¥${avgPrice.toFixed(1)}` : "-"}</span><small>均价</small></div>
-    <div><span>${totalSales ? formatNum(totalSales) : "-"}</span><small>总销量(估算)</small></div>
+    <div><span>${Number.isFinite(avgPrice) ? `¥${avgPrice.toFixed(1)}` : "-"}</span><small>均价</small></div>
+    <div><span>${Number.isFinite(totalSales) ? formatNum(totalSales) : "-"}</span><small>总销量(估算)</small></div>
   `;
 }
 
-function renderAnalysisCharts() {
-  const rows = rowsForAnalysis();
-  const root = byId("analysisCharts");
+function renderSimple() {
+  const rows = rowsForSimple();
+  const runRows = rowsByRun();
+  const modeMap = { summary: "全部", taobao: "淘宝", jd: "京东" };
+  const runName = ui.activeRunId === "all" ? "全部任务" : (runRows[0]?.keyword || ui.activeRunId);
+  byId("simpleActiveRunText").textContent = `当前：${runName} · ${modeMap[ui.simpleView]} · ${rows.length} 条`;
+
+  renderStats(rows, "simpleStats");
+
+  const charts = byId("simpleCharts");
   if (!rows.length) {
-    root.innerHTML = `<div class="chart-card"><h3>暂无数据</h3><div class="bars">请先采集或调整筛选条件。</div></div>`;
+    charts.innerHTML = `<div class="chart-card"><h3>暂无数据</h3></div>`;
     return;
   }
 
-  const trend = trendChartHtml(rows);
+  const topShops = groupedCount(rows, (r) => r._shop).slice(0, 8);
+  charts.innerHTML = [
+    trendChartHtml(rows, 14),
+    pieChartHtml("店铺占比", topShops),
+    barChartHtml("价格分布", priceBuckets(rows)),
+    barChartHtml("销量分布", salesBuckets(rows))
+  ].join("");
+}
 
-  if (ui.activeAnalysis === "compare") {
+function renderAdvanced() {
+  const rows = rowsForAdvanced();
+  const runRows = rowsByRun();
+  const modeMap = { summary: "汇总", taobao: "淘宝", jd: "京东", compare: "对比" };
+  const runName = ui.activeRunId === "all" ? "全部任务" : (runRows[0]?.keyword || ui.activeRunId);
+  byId("advancedActiveRunText").textContent = `当前：${runName} · ${modeMap[ui.advancedView]} · ${rows.length} 条`;
+
+  renderStats(rows, "advancedStats");
+
+  const charts = byId("advancedCharts");
+  if (!rows.length) {
+    charts.innerHTML = `<div class="chart-card"><h3>暂无数据</h3></div>`;
+    return;
+  }
+
+  if (ui.advancedView === "compare") {
     const byPlatform = groupedCount(rows, (r) => r.platform).slice(0, 8);
     const avgPriceByPlatform = ["taobao", "jd"].map((p) => {
       const ps = rows.filter((r) => r.platform === p).map((r) => r._price).filter((n) => Number.isFinite(n));
@@ -374,24 +390,27 @@ function renderAnalysisCharts() {
     });
     const salesByPlatform = ["taobao", "jd"].map((p) => {
       const ss = rows.filter((r) => r.platform === p).map((r) => r._sales).filter((n) => Number.isFinite(n));
-      const sum = ss.length ? ss.reduce((a, b) => a + b, 0) : 0;
-      return [p, sum];
+      return [p, ss.length ? ss.reduce((a, b) => a + b, 0) : 0];
     });
 
-    root.innerHTML = [trend, pieChartHtml("平台占比", byPlatform), barChartHtml("平台均价", avgPriceByPlatform, (v) => `¥${v}`), barChartHtml("平台总销量", salesByPlatform, (v) => formatNum(v)), barChartHtml("平台价格分布", priceBuckets(rows))].join("");
+    charts.innerHTML = [
+      trendChartHtml(rows, ui.trendRangeDays),
+      pieChartHtml("平台占比", byPlatform),
+      barChartHtml("平台均价", avgPriceByPlatform, (v) => `¥${v}`),
+      barChartHtml("平台总销量", salesByPlatform, (v) => formatNum(v))
+    ].join("");
     return;
   }
 
-  const topShopsByCount = groupedCount(rows, (r) => r._shop || "未知店铺").slice(0, 8);
-  const topShopsBySales = groupedSum(rows, (r) => r._shop || "未知店铺", (r) => r._sales || 0).slice(0, 8);
-  root.innerHTML = [trend, pieChartHtml("店铺占比Top", topShopsByCount), barChartHtml("店铺销量Top", topShopsBySales, (v) => formatNum(v)), barChartHtml("价格分布", priceBuckets(rows)), barChartHtml("销量分布", salesBuckets(rows))].join("");
-}
-
-function renderActiveRunText() {
-  const runRows = rowsByRun();
-  const modeMap = { summary: "汇总", taobao: "淘宝", jd: "京东", compare: "对比" };
-  const runName = ui.activeRunId === "all" ? "全部任务" : (runRows[0]?.keyword || ui.activeRunId);
-  byId("activeRunText").textContent = `当前：${runName} · ${modeMap[ui.activeAnalysis]} · 已筛选 ${rowsForAnalysis().length} 条`;
+  const topShopsByCount = groupedCount(rows, (r) => r._shop).slice(0, 8);
+  const topShopsBySales = groupedSum(rows, (r) => r._shop, (r) => r._sales || 0).slice(0, 8);
+  charts.innerHTML = [
+    trendChartHtml(rows, ui.trendRangeDays),
+    pieChartHtml("店铺占比Top", topShopsByCount),
+    barChartHtml("店铺销量Top", topShopsBySales, (v) => formatNum(v)),
+    barChartHtml("价格分布", priceBuckets(rows)),
+    barChartHtml("销量分布", salesBuckets(rows))
+  ].join("");
 }
 
 async function refreshLogs() {
@@ -399,14 +418,12 @@ async function refreshLogs() {
   ui.logs = data[LOGS_KEY] || [];
   renderLogs();
 }
-
 async function clearLogs() {
   await chrome.storage.local.set({ [LOGS_KEY]: [] });
   ui.logs = [];
   renderLogs();
   setStatus("日志已清空");
 }
-
 function renderLogs() {
   const logs = [...ui.logs].sort((a, b) => (b.at || 0) - (a.at || 0));
   const total = logs.length;
@@ -414,7 +431,6 @@ function renderLogs() {
   const warnCount = logs.filter((x) => x.level === "warn").length;
   const infoCount = logs.filter((x) => x.level === "info").length;
   const sourceCount = new Set(logs.map((x) => x.source || "unknown")).size;
-
   byId("logStats").innerHTML = `
     <div><span>${total}</span><small>日志总数</small></div>
     <div><span>${errorCount}</span><small>错误</small></div>
@@ -422,7 +438,6 @@ function renderLogs() {
     <div><span>${infoCount}</span><small>信息</small></div>
     <div><span>${sourceCount}</span><small>来源数</small></div>
   `;
-
   const body = byId("logBody");
   body.innerHTML = "";
   if (!logs.length) {
@@ -431,7 +446,6 @@ function renderLogs() {
     body.appendChild(tr);
     return;
   }
-
   for (const log of logs.slice(0, 300)) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -445,22 +459,115 @@ function renderLogs() {
   }
 }
 
+async function loadSettings() {
+  const data = await chrome.storage.local.get(SETTINGS_KEY);
+  return data[SETTINGS_KEY] || {};
+}
+async function saveSettings(partial) {
+  const old = await loadSettings();
+  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...old, ...partial } });
+}
+
+function renderSavedViews() {
+  const sel = byId("savedViewSelect");
+  const names = Object.keys(ui.savedViews).sort((a, b) => a.localeCompare(b, "zh-CN"));
+  sel.innerHTML = `<option value="">请选择</option>${names.map((n) => `<option value="${n}">${n}</option>`).join("")}`;
+}
+
+async function applyFiltersAndPersist() {
+  collectFiltersFromUI();
+  await saveSettings({ dashboardFilters: ui.filters, trendRangeDays: ui.trendRangeDays, mergeSimilar: ui.mergeSimilar });
+  renderAll();
+}
+async function resetFilters() {
+  ui.filters = { platform: "all", shop: "", title: "", minSales: "", minPrice: "", maxPrice: "", sortMode: "price_asc" };
+  applyFiltersToUI();
+  await saveSettings({ dashboardFilters: ui.filters });
+  renderAll();
+}
+async function saveView() {
+  const name = byId("viewName").value.trim();
+  if (!name) {
+    setStatus("请先输入视图名称");
+    return;
+  }
+  collectFiltersFromUI();
+  ui.savedViews[name] = { filters: { ...ui.filters }, advancedView: ui.advancedView, mergeSimilar: ui.mergeSimilar, trendRangeDays: ui.trendRangeDays };
+  await saveSettings({ dashboardSavedViews: ui.savedViews });
+  renderSavedViews();
+  byId("savedViewSelect").value = name;
+  setStatus(`已保存视图：${name}`);
+}
+async function applyView() {
+  const name = byId("savedViewSelect").value;
+  if (!name || !ui.savedViews[name]) {
+    setStatus("请选择有效视图");
+    return;
+  }
+  const view = ui.savedViews[name];
+  ui.filters = { ...ui.filters, ...(view.filters || {}) };
+  ui.advancedView = view.advancedView || "summary";
+  ui.mergeSimilar = view.mergeSimilar !== false;
+  ui.trendRangeDays = Number(view.trendRangeDays || 14);
+  applyFiltersToUI();
+  await saveSettings({ dashboardFilters: ui.filters, mergeSimilar: ui.mergeSimilar, trendRangeDays: ui.trendRangeDays });
+  renderAll();
+  setStatus(`已应用视图：${name}`);
+}
+async function deleteView() {
+  const name = byId("savedViewSelect").value;
+  if (!name || !ui.savedViews[name]) {
+    setStatus("请选择要删除的视图");
+    return;
+  }
+  delete ui.savedViews[name];
+  await saveSettings({ dashboardSavedViews: ui.savedViews });
+  renderSavedViews();
+  setStatus(`已删除视图：${name}`);
+}
+
+function setMode(mode) {
+  ui.analysisMode = mode;
+  const simpleBtn = byId("modeSimpleBtn");
+  const advBtn = byId("modeAdvancedBtn");
+  simpleBtn.classList.toggle("active", mode === "simple");
+  advBtn.classList.toggle("active", mode === "advanced");
+
+  const simplePanel = byId("simplePanel");
+  const advPanels = Array.from(document.querySelectorAll(".advanced-only"));
+  if (mode === "simple") {
+    simplePanel.classList.remove("hidden");
+    advPanels.forEach((el) => el.classList.add("hidden"));
+  } else {
+    simplePanel.classList.add("hidden");
+    advPanels.forEach((el) => el.classList.remove("hidden"));
+  }
+}
+
+function updateNavButtons() {
+  for (const btn of Array.from(byId("simpleNav").querySelectorAll(".nav-btn"))) {
+    btn.classList.toggle("active", btn.dataset.view === ui.simpleView);
+  }
+  for (const btn of Array.from(byId("advancedNav").querySelectorAll(".nav-btn"))) {
+    btn.classList.toggle("active", btn.dataset.view === ui.advancedView);
+  }
+}
+
 function exportAnalysisReport() {
-  const rows = rowsForAnalysis();
+  const rows = rowsForAdvanced();
   const topShops = groupedCount(rows, (r) => r._shop).slice(0, 10);
   const topSales = groupedSum(rows, (r) => r._shop, (r) => r._sales || 0).slice(0, 10);
   const platform = groupedCount(rows, (r) => r.platform).slice(0, 10);
 
   const filtersText = JSON.stringify({
     runId: ui.activeRunId,
-    analysis: ui.activeAnalysis,
+    advancedView: ui.advancedView,
     mergeSimilar: ui.mergeSimilar,
     trendRangeDays: ui.trendRangeDays,
     filters: ui.filters
   }, null, 2);
 
   const tr = (entries, fmt = (v) => v) => entries.map(([k, v]) => `<tr><td>${k}</td><td>${fmt(v)}</td></tr>`).join("");
-
   const html = `
   <html><head><meta charset="UTF-8"><title>分析报告</title>
   <style>body{font-family:Arial,sans-serif;padding:20px}table{border-collapse:collapse;margin:10px 0;width:520px}td,th{border:1px solid #ccc;padding:6px}pre{background:#f4f4f4;padding:8px}</style>
@@ -484,86 +591,11 @@ function exportAnalysisReport() {
   setStatus("已导出分析报告");
 }
 
-async function loadSettings() {
-  const data = await chrome.storage.local.get(SETTINGS_KEY);
-  return data[SETTINGS_KEY] || {};
-}
-
-async function saveSettings(partial) {
-  const old = await loadSettings();
-  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...old, ...partial } });
-}
-
-function renderSavedViews() {
-  const sel = byId("savedViewSelect");
-  const names = Object.keys(ui.savedViews).sort((a, b) => a.localeCompare(b, "zh-CN"));
-  sel.innerHTML = `<option value="">请选择</option>${names.map((n) => `<option value="${n}">${n}</option>`).join("")}`;
-}
-
-async function applyFiltersAndPersist() {
-  collectFiltersFromUI();
-  await saveSettings({ dashboardFilters: ui.filters, trendRangeDays: ui.trendRangeDays, mergeSimilar: ui.mergeSimilar });
-  renderAll();
-}
-
-async function resetFilters() {
-  ui.filters = { platform: "all", shop: "", title: "", minSales: "", minPrice: "", maxPrice: "", sortMode: "price_asc" };
-  applyFiltersToUI();
-  await saveSettings({ dashboardFilters: ui.filters });
-  renderAll();
-}
-
-async function saveView() {
-  const name = byId("viewName").value.trim();
-  if (!name) {
-    setStatus("请先输入视图名称");
-    return;
-  }
-  collectFiltersFromUI();
-  ui.savedViews[name] = { filters: { ...ui.filters }, analysis: ui.activeAnalysis, mergeSimilar: ui.mergeSimilar, trendRangeDays: ui.trendRangeDays };
-  await saveSettings({ dashboardSavedViews: ui.savedViews });
-  renderSavedViews();
-  byId("savedViewSelect").value = name;
-  setStatus(`已保存视图：${name}`);
-}
-
-async function applyView() {
-  const name = byId("savedViewSelect").value;
-  if (!name || !ui.savedViews[name]) {
-    setStatus("请选择有效视图");
-    return;
-  }
-  const view = ui.savedViews[name];
-  ui.filters = { ...ui.filters, ...(view.filters || {}) };
-  ui.activeAnalysis = view.analysis || "summary";
-  ui.mergeSimilar = view.mergeSimilar !== false;
-  ui.trendRangeDays = Number(view.trendRangeDays || 14);
-  applyFiltersToUI();
-  await saveSettings({ dashboardFilters: ui.filters, mergeSimilar: ui.mergeSimilar, trendRangeDays: ui.trendRangeDays });
-  renderAll();
-  setStatus(`已应用视图：${name}`);
-}
-
-async function deleteView() {
-  const name = byId("savedViewSelect").value;
-  if (!name || !ui.savedViews[name]) {
-    setStatus("请选择要删除的视图");
-    return;
-  }
-  delete ui.savedViews[name];
-  await saveSettings({ dashboardSavedViews: ui.savedViews });
-  renderSavedViews();
-  setStatus(`已删除视图：${name}`);
-}
-
 function renderAll() {
-  const buttons = Array.from(byId("analysisNav").querySelectorAll(".nav-btn"));
-  for (const btn of buttons) btn.classList.toggle("active", btn.dataset.view === ui.activeAnalysis);
-
+  updateNavButtons();
   renderRunList();
-  renderActiveRunText();
-  renderStats(rowsForAnalysis());
-  renderAnalysisCharts();
+  renderSimple();
+  renderAdvanced();
   renderLogs();
 }
 
@@ -575,12 +607,29 @@ async function refreshData() {
 }
 
 function bindEvents() {
-  byId("applyFilterBtn").addEventListener("click", async () => {
-    collectFiltersFromUI();
-    ui.mergeSimilar = byId("mergeSimilar").checked;
-    ui.trendRangeDays = Math.max(1, Number(byId("trendRangeDays").value || 14));
-    await applyFiltersAndPersist();
+  byId("modeSimpleBtn").addEventListener("click", () => {
+    setMode("simple");
+    renderAll();
   });
+  byId("modeAdvancedBtn").addEventListener("click", () => {
+    setMode("advanced");
+    renderAll();
+  });
+
+  for (const btn of Array.from(byId("simpleNav").querySelectorAll(".nav-btn"))) {
+    btn.addEventListener("click", () => {
+      ui.simpleView = btn.dataset.view;
+      renderAll();
+    });
+  }
+  for (const btn of Array.from(byId("advancedNav").querySelectorAll(".nav-btn"))) {
+    btn.addEventListener("click", () => {
+      ui.advancedView = btn.dataset.view;
+      renderAll();
+    });
+  }
+
+  byId("applyFilterBtn").addEventListener("click", applyFiltersAndPersist);
   byId("resetFilterBtn").addEventListener("click", resetFilters);
   byId("saveViewBtn").addEventListener("click", saveView);
   byId("applyViewBtn").addEventListener("click", applyView);
@@ -589,6 +638,7 @@ function bindEvents() {
   byId("refreshBtn").addEventListener("click", refreshData);
   byId("refreshLogsBtn").addEventListener("click", refreshLogs);
   byId("clearLogsBtn").addEventListener("click", clearLogs);
+
   byId("trendRangeDays").addEventListener("change", () => {
     ui.trendRangeDays = Math.max(1, Number(byId("trendRangeDays").value || 14));
     saveSettings({ trendRangeDays: ui.trendRangeDays }).catch(() => {});
@@ -599,13 +649,6 @@ function bindEvents() {
     saveSettings({ mergeSimilar: ui.mergeSimilar }).catch(() => {});
     renderAll();
   });
-
-  for (const btn of Array.from(byId("analysisNav").querySelectorAll(".nav-btn"))) {
-    btn.addEventListener("click", () => {
-      ui.activeAnalysis = btn.dataset.view;
-      renderAll();
-    });
-  }
 }
 
 async function init() {
@@ -618,6 +661,7 @@ async function init() {
   applyFiltersToUI();
   renderSavedViews();
   bindEvents();
+  setMode("simple");
   await refreshLogs();
   await refreshData();
 }
