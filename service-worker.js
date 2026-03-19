@@ -9,6 +9,10 @@ async function setRunningTabs(runningTabs) {
   await chrome.storage.local.set({ [RUNNING_TABS_KEY]: runningTabs });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function buildCompareTargets(keyword) {
   const encoded = encodeURIComponent(keyword);
   return [
@@ -32,6 +36,27 @@ async function registerRunningTab(tabId, config, progress = null) {
     updatedAt: Date.now()
   };
   await setRunningTabs(runningTabs);
+}
+
+async function sendResumeToTabWithRetry(tabId, state, maxRetry = 6) {
+  for (let i = 0; i < maxRetry; i += 1) {
+    try {
+      const resp = await chrome.tabs.sendMessage(tabId, {
+        type: "BOT_RESUME_ON_NAVIGATION",
+        payload: {
+          config: state.config,
+          progress: state.progress || null
+        }
+      });
+      if (resp?.ok) {
+        return true;
+      }
+    } catch (_) {
+      // Content script may not be ready yet.
+    }
+    await sleep(900);
+  }
+  return false;
 }
 
 async function stopAllCompareTabs() {
@@ -110,7 +135,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           intervalMs,
           enableSpeech
         };
+        const state = {
+          running: true,
+          config,
+          progress: { currentPage: 1 }
+        };
         await registerRunningTab(tab.id, config, { currentPage: 1 });
+        await sendResumeToTabWithRetry(tab.id, state, 8);
       })
     )
       .then(() => sendResponse({ ok: true }))
@@ -177,14 +208,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       if (!state?.running || !state?.config) {
         return;
       }
-
-      chrome.tabs.sendMessage(tabId, {
-        type: "BOT_RESUME_ON_NAVIGATION",
-        payload: {
-          config: state.config,
-          progress: state.progress || null
-        }
-      });
+      sendResumeToTabWithRetry(tabId, state, 6).catch(() => {});
     })
     .catch(() => {});
 });
