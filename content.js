@@ -155,24 +155,72 @@ function scrapeTaobao(keyword, page) {
 }
 
 function scrapeJd(keyword, page) {
-  const links = Array.from(document.querySelectorAll('a[href*="item.jd.com/"]'));
+  const links = Array.from(
+    document.querySelectorAll(
+      [
+        'a[href*="item.jd.com/"]',
+        'a[href*="//item.jd.com/"]',
+        'a[href*="item.m.jd.com/product/"]'
+      ].join(",")
+    )
+  );
+
   const records = links
     .map((anchor) => {
-      const container = anchor.closest("li") || anchor.closest("div") || anchor;
-      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
-      const title = (anchor.innerText || anchor.title || "").trim();
-      if (!title || title.length < 2) {
+      const rawHref = anchor.getAttribute("href") || anchor.href || "";
+      if (!rawHref || rawHref.includes("ccc-x.jd.com") || rawHref.includes("pro.m.jd.com")) {
         return null;
       }
-      const shopEl = container.querySelector('.curr-shop, .shopName, [class*="shop"] a');
+      const link = normalizeProductLink(
+        rawHref.startsWith("//") ? `https:${rawHref}` : rawHref
+      );
+      if (!link.includes("item.jd.com") && !link.includes("item.m.jd.com")) {
+        return null;
+      }
+
+      const container =
+        anchor.closest("li.gl-item") ||
+        anchor.closest('[class*="goodsItem"]') ||
+        anchor.closest('[class*="GoodsItem"]') ||
+        anchor.closest("li") ||
+        anchor.closest("div") ||
+        anchor;
+      const text = (container.innerText || "").replace(/\s+/g, " ").trim();
+      const title =
+        (anchor.getAttribute("title") || "").trim() ||
+        textFromSelectors(container, [
+          ".p-name em",
+          '[class*="title"]',
+          "h3"
+        ]) ||
+        (anchor.innerText || "").replace(/\s+/g, " ").trim();
+      if (!title || title.length < 4) {
+        return null;
+      }
+
+      const priceText =
+        textFromSelectors(container, [
+          ".p-price i",
+          '[class*="price"]',
+          '[class*="Price"]'
+        ]) || parsePrice(text);
+
+      const shop =
+        textFromSelectors(container, [
+          ".p-shop a",
+          ".curr-shop",
+          ".shopName",
+          '[class*="shop"] a'
+        ]) || "";
+
       return {
         keyword,
         platform: "jd",
         page,
         title,
-        price: parsePrice(text),
-        shop: (shopEl?.innerText || "").trim(),
-        link: anchor.href.startsWith("http") ? anchor.href : `https:${anchor.href}`,
+        price: parsePrice(priceText || text),
+        shop,
+        link,
         capturedAt: new Date().toISOString()
       };
     })
@@ -294,7 +342,12 @@ function getNextSelectorForPlatform(platform) {
     ].join(",");
   }
   if (platform === "jd") {
-    return "a.pn-next, .pn-next";
+    return [
+      "a.pn-next:not(.disabled)",
+      ".pn-next:not(.disabled)",
+      '[class*="pagination"] [class*="next"]:not(.disabled)',
+      "button.next-btn-next:not([disabled])"
+    ].join(",");
   }
   return "";
 }
