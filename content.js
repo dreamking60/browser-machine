@@ -28,6 +28,33 @@ function parsePrice(text) {
   return match ? match[0] : "";
 }
 
+function parseSales(text) {
+  const raw = (text || "").replace(/\s+/g, " ").trim();
+  if (!raw) {
+    return "";
+  }
+  const patterns = [
+    /已售\s*[\d.万千+]+/i,
+    /[\d.万千+]+\s*人付款/i,
+    /[\d.万千+]+\s*条评价/i,
+    /[\d.万千+]+\s*人看过/i
+  ];
+  for (const pattern of patterns) {
+    const matched = raw.match(pattern);
+    if (matched?.[0]) {
+      return matched[0];
+    }
+  }
+  return "";
+}
+
+function cleanShopName(raw) {
+  let s = String(raw || "").replace(/\s+/g, " ").trim();
+  s = s.replace(/^\d+\s*年老店/g, "").trim();
+  s = s.replace(/^(老店|品牌店|品质店|严选店)/g, "").trim();
+  return s;
+}
+
 function textFromSelectors(root, selectors) {
   for (const selector of selectors) {
     const el = root.querySelector(selector);
@@ -56,8 +83,9 @@ function dedupeByLink(items) {
     if (!item.link) {
       continue;
     }
-    if (!map.has(item.link)) {
-      map.set(item.link, item);
+    const key = `${item.runId || ""}|${item.platform || ""}|${item.link}`;
+    if (!map.has(key)) {
+      map.set(key, item);
     }
   }
   return Array.from(map.values());
@@ -132,19 +160,30 @@ function scrapeTaobao(keyword, page) {
           '[class*="price"]'
         ]) || parsePrice(text);
 
-      const shop =
+      const shopRaw =
         textFromSelectors(container, [
+          '[class*="shopNameText"]',
+          '[class*="shopTextWrapper"] [class*="shopName"]',
           '[class*="ShopInfo"] a',
           '[class*="shop"] a',
           '[class*="seller"] a'
         ]) || "";
+      const shop = cleanShopName(shopRaw);
+      const sales =
+        textFromSelectors(container, [
+          '[class*="realSales"]',
+          '[class*="sales"]',
+          '[class*="deal"]'
+        ]) || parseSales(text);
 
       return {
+        runId: state.config?.runId || "",
         keyword,
         platform: "taobao",
         page,
         title,
         price: parsePrice(priceText || text),
+        sales,
         shop,
         link,
         capturedAt: new Date().toISOString()
@@ -189,19 +228,28 @@ function scrapeJd(keyword, page) {
             ".p-price i",
             '[class*="price"]'
           ]) || "";
-        const shop =
+        const shopRaw =
           textFromSelectors(card, [
             '[class*="_name_"] span',
             '[class*="shopFloor"] [class*="name"] span',
             '[class*="shop"] a'
           ]) || "";
+        const shop = cleanShopName(shopRaw);
+        const sales =
+          textFromSelectors(card, [
+            '[class*="goods_volume"] [title]',
+            '[class*="goods_volume"]',
+            '[class*="volume"]'
+          ]) || parseSales(card.innerText || "");
 
         return {
+          runId: state.config?.runId || "",
           keyword,
           platform: "jd",
           page,
           title,
           price: parsePrice(priceText),
+          sales,
           shop,
           link: `https://item.jd.com/${sku}.html`,
           capturedAt: new Date().toISOString()
@@ -262,20 +310,29 @@ function scrapeJd(keyword, page) {
           '[class*="Price"]'
         ]) || parsePrice(text);
 
-      const shop =
+      const shopRaw =
         textFromSelectors(container, [
           ".p-shop a",
           ".curr-shop",
           ".shopName",
           '[class*="shop"] a'
         ]) || "";
+      const shop = cleanShopName(shopRaw);
+      const sales =
+        textFromSelectors(container, [
+          ".p-commit",
+          '[class*="commit"]',
+          '[class*="goods_volume"]'
+        ]) || parseSales(text);
 
       return {
+        runId: state.config?.runId || "",
         keyword,
         platform: "jd",
         page,
         title,
         price: parsePrice(priceText || text),
+        sales,
         shop,
         link,
         capturedAt: new Date().toISOString()
@@ -294,9 +351,9 @@ async function storeRecords(records) {
 
   function makeKey(record) {
     if (record.link) {
-      return `${record.platform || ""}|${record.keyword || ""}|${record.link}`;
+      return `${record.runId || ""}|${record.platform || ""}|${record.keyword || ""}|${record.link}`;
     }
-    return `${record.url || ""}|${record.title || ""}|${record.capturedAt || ""}`;
+    return `${record.runId || ""}|${record.url || ""}|${record.title || ""}|${record.capturedAt || ""}`;
   }
 
   const existingKeys = new Set(

@@ -3,73 +3,95 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>无障碍比价控制台</title>
+    <title>无障碍比价数据平台</title>
     <link rel="stylesheet" href="dashboard.css" />
   </head>
   <body>
-    <main class="layout">
-      <header class="hero">
-        <h1>无障碍自动比价控制台</h1>
-        <p>一次输入关键词，自动采集淘宝和京东商品，统一展示与导出。</p>
-      </header>
+    <div class="shell">
+      <aside class="sidebar">
+        <h1>比价平台</h1>
+        <p class="sub">残疾人友好自动化采集面板</p>
+        <button id="refreshBtn" class="btn">刷新数据</button>
+        <button id="clearBtn" class="btn danger">清空数据</button>
+        <h2>任务批次</h2>
+        <div id="runList" class="run-list"></div>
+      </aside>
 
-      <section class="card controls">
-        <h2>任务设置</h2>
-        <div class="grid">
-          <label>
-            关键词
-            <input id="keyword" type="text" placeholder="例如：电动轮椅" />
-          </label>
-          <label>
-            每个平台页数
-            <input id="pages" type="number" min="1" value="3" />
-          </label>
-          <label>
-            执行间隔（毫秒）
-            <input id="intervalMs" type="number" min="1000" value="4000" />
-          </label>
-          <label class="checkbox">
-            <input id="speech" type="checkbox" />
-            语音提示
-          </label>
-        </div>
-        <div class="actions">
-          <button id="startBtn" class="primary">启动多平台采集</button>
-          <button id="stopBtn" class="danger">停止全部任务</button>
-          <button id="refreshBtn">刷新结果</button>
-          <button id="clearBtn">清空数据</button>
-          <button id="exportBtn">导出 JSON</button>
-        </div>
-        <p id="status" class="status">状态：待启动</p>
-      </section>
+      <main class="main">
+        <section class="panel">
+          <div class="title-row">
+            <h2>任务配置</h2>
+            <p id="status" class="status">状态：待启动</p>
+          </div>
 
-      <section class="card summary">
-        <h2>结果摘要</h2>
-        <div class="stats">
-          <div><span id="totalCount">0</span><small>总商品数</small></div>
-          <div><span id="taobaoCount">0</span><small>淘宝</small></div>
-          <div><span id="jdCount">0</span><small>京东</small></div>
-          <div><span id="minPrice">-</span><small>最低价</small></div>
-        </div>
-      </section>
+          <div class="form-grid">
+            <label>关键词
+              <input id="keyword" type="text" placeholder="例如：电动轮椅" />
+            </label>
+            <label>每个平台页数
+              <input id="pages" type="number" min="1" value="2" />
+            </label>
+            <label>执行间隔（毫秒）
+              <input id="intervalMs" type="number" min="1000" value="4000" />
+            </label>
+            <label class="check"><input id="speech" type="checkbox" />语音提示</label>
+          </div>
 
-      <section class="card table-wrap">
-        <h2>采集结果</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>平台</th>
-              <th>标题</th>
-              <th>价格</th>
-              <th>店铺</th>
-              <th>链接</th>
-              <th>时间</th>
-            </tr>
-          </thead>
-          <tbody id="resultBody"></tbody>
-        </table>
-      </section>
-    </main>
+          <div class="actions">
+            <button id="startBtn" class="btn primary">启动采集</button>
+            <button id="stopBtn" class="btn danger">停止全部</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>摘要</h2>
+          <div class="stats">
+            <div><span id="totalCount">0</span><small>当前记录</small></div>
+            <div><span id="taobaoCount">0</span><small>淘宝</small></div>
+            <div><span id="jdCount">0</span><small>京东</small></div>
+            <div><span id="minPrice">-</span><small>最低价</small></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>导出中心</h2>
+          <div class="export-row">
+            <label>CSV 编码
+              <select id="csvEncoding">
+                <option value="utf-8">UTF-8</option>
+                <option value="gbk">GBK</option>
+              </select>
+            </label>
+            <button id="exportCsvBtn" class="btn">导出 CSV</button>
+            <button id="exportExcelBtn" class="btn">导出 Excel</button>
+            <button id="exportJsonBtn" class="btn">导出 JSON</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="title-row">
+            <h2>结果明细（单页）</h2>
+            <div id="activeRunText" class="active-run">当前：全部任务</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>平台</th>
+                  <th>标题</th>
+                  <th>价格</th>
+                  <th>销量</th>
+                  <th>店铺</th>
+                  <th>链接</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody id="resultBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <script src="dashboard.js"></script>
   </body>

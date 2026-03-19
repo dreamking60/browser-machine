@@ -27,6 +27,10 @@ function buildCompareTargets(keyword) {
   ];
 }
 
+function createRunId() {
+  return `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function registerRunningTab(tabId, config, progress = null) {
   const runningTabs = await getRunningTabs();
   runningTabs[String(tabId)] = {
@@ -112,6 +116,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const maxPages = Math.max(1, Number(message.payload?.maxPages) || 3);
     const intervalMs = Math.max(1000, Number(message.payload?.intervalMs) || 4000);
     const enableSpeech = Boolean(message.payload?.enableSpeech);
+    const runId = (message.payload?.runId || "").trim() || createRunId();
+    const runName = (message.payload?.runName || "").trim() || `${keyword}-${new Date().toLocaleString()}`;
 
     if (!keyword) {
       sendResponse({ ok: false, error: "Keyword is required" });
@@ -131,6 +137,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           compareMode: true,
           platform: target.platform,
           keyword,
+          runId,
+          runName,
           maxPages,
           intervalMs,
           enableSpeech
@@ -144,7 +152,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await sendResumeToTabWithRetry(tab.id, state, 8);
       })
     )
-      .then(() => sendResponse({ ok: true }))
+      .then(() => sendResponse({ ok: true, runId }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
 
     return true;
