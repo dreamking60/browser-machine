@@ -7,7 +7,7 @@ const state = {
   iterations: 0,
   announcedStart: false,
   compareCurrentPage: 1,
-  compareLastProcessedUrl: "",
+  compareLastProcessedSignature: "",
   compareEmptyRetry: 0
 };
 
@@ -467,6 +467,18 @@ function getNextSelectorForPlatform(platform) {
   return "";
 }
 
+function getComparePageSignature(platform, records) {
+  const firstLink = records?.[0]?.link || "";
+  if (platform === "jd") {
+    const quickResultText = textFromSelectors(document, [
+      '[class*="_quick-result_"]',
+      '[class*="pagination_total"]'
+    ]).replace(/\s+/g, "");
+    return `jd|${quickResultText}|${firstLink}`;
+  }
+  return `${platform}|${location.href}|${firstLink}`;
+}
+
 async function reportProgressFromListener(progress) {
   try {
     await chrome.runtime.sendMessage({
@@ -491,10 +503,6 @@ async function runCompareStep() {
     return;
   }
 
-  if (state.compareLastProcessedUrl === location.href) {
-    return;
-  }
-
   let records = [];
   if (platform === "taobao") {
     records = scrapeTaobao(state.config.keyword || "", state.compareCurrentPage);
@@ -513,7 +521,11 @@ async function runCompareStep() {
   }
 
   state.compareEmptyRetry = 0;
-  state.compareLastProcessedUrl = location.href;
+  const pageSignature = getComparePageSignature(platform, records);
+  if (pageSignature && pageSignature === state.compareLastProcessedSignature) {
+    return;
+  }
+  state.compareLastProcessedSignature = pageSignature;
 
   await storeRecords(records);
   await reportProgressFromListener({
@@ -603,7 +615,7 @@ function startAutomation(config, source = "manual", progress = null) {
     ...config
   };
   state.iterations = 0;
-  state.compareLastProcessedUrl = "";
+  state.compareLastProcessedSignature = "";
   state.compareEmptyRetry = 0;
   state.compareCurrentPage = Math.max(1, Number(progress?.currentPage) || 1);
 
